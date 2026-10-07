@@ -37,7 +37,7 @@
             <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6" /></svg>
           </button>
           <button class="icon-btn" data-open="dlg-settings" aria-label="Inställningar" title="Inställningar">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button>
         </nav>
       </div>
@@ -151,6 +151,12 @@
         <div><b>Tema</b></div>
         <div class="seg" id="set-theme">
           <button data-v="system">Auto</button><button data-v="light">Ljust</button><button data-v="dark">Mörkt</button>
+        </div>
+      </div>
+      <div class="setting">
+        <div><b>Animationer</b><div class="muted small">Auto följer inställningen i din dator eller telefon</div></div>
+        <div class="seg" id="set-motion">
+          <button data-v="auto">Auto</button><button data-v="on">På</button><button data-v="off">Av</button>
         </div>
       </div>
       <label class="setting"><div><b>Bekräfta inlämning</b><div class="muted small">Fråga innan ett tal lämnas in</div></div><input type="checkbox" class="switch" id="set-confirm" /></label>

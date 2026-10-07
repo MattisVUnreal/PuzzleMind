@@ -27,8 +27,17 @@ const store = {
   },
 };
 
-const settings = Object.assign({ theme: 'system', confirm: true, timer: true }, store.get('settings', {}));
+const settings = Object.assign({ theme: 'system', motion: 'auto', confirm: true, timer: true }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
+
+// Animations follow the device's "reduce motion" setting unless the player
+// picks On or Off in the game's own settings.
+const motionOK = () =>
+  settings.motion === 'on' || (settings.motion !== 'off' && !matchMedia('(prefers-reduced-motion: reduce)').matches);
+function applyMotion() {
+  document.documentElement.classList.toggle('reduce-motion', !motionOK());
+  for (const b of document.querySelectorAll('#set-motion button')) b.classList.toggle('on', b.dataset.v === settings.motion);
+}
 
 let toastTimer;
 function toast(msg, ms = 2600) {
@@ -347,7 +356,7 @@ async function combine(a, b, operator, node) {
 function flyTogether(a, b, operator) {
   const ta = document.querySelector(`.tile[data-k="${a}"]`);
   const tb = document.querySelector(`.tile[data-k="${b}"]`);
-  if (!ta || !tb || !ta.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
+  if (!ta || !tb || !ta.animate || !motionOK()) return Promise.resolve();
   const ra = ta.getBoundingClientRect(), rb = tb.getBoundingClientRect();
   const dx = rb.left - ra.left, dy = rb.top - ra.top;
 
@@ -803,6 +812,15 @@ function applyTheme() {
   for (const b of document.querySelectorAll('#set-theme button')) b.classList.toggle('on', b.dataset.v === settings.theme);
 }
 
+$('#set-motion').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  settings.motion = b.dataset.v;
+  saveSettings();
+  applyMotion();
+});
+matchMedia('(prefers-reduced-motion: reduce)').addEventListener?.('change', applyMotion);
+
 $('#set-theme').addEventListener('click', (ev) => {
   const b = ev.target.closest('button');
   if (!b) return;
@@ -854,7 +872,7 @@ $('#dlg-help').addEventListener('close', () => store.set('seenHelp', true));
 // Confetti
 
 function burst(count) {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!motionOK()) return;
   const canvas = $('#confetti');
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -900,6 +918,7 @@ function burst(count) {
 
 renderMeta();
 applyTheme();
+applyMotion();
 syncResult();
 render();
 if (!store.get('seenHelp', false)) openDialog('dlg-help');
