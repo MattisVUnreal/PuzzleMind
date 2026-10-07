@@ -1,5 +1,6 @@
 import { generateRound, applyOp } from './numbers.js';
 import { MAX_STARS, PUZZLES, RESULTS, resultFor, starString, puzzleStars, shareText, computeStats } from './round.js';
+import { submitResult, daySummary, leaderboard, setName, beatShare } from './online.js';
 import { EPOCH, todayId, isDayId, puzzleNumber, formatDay, msUntilMidnight, formatDuration, addDays } from './date.js';
 
 // ---------------------------------------------------------------------------
@@ -423,6 +424,7 @@ function finishRound() {
     store.set('results', results);
   }
   save();
+  syncResult();
   const total = starsList.reduce((s, x) => s + x, 0);
   setTimeout(() => {
     if (total >= 12) burst(160);
@@ -529,6 +531,7 @@ function openResult() {
       <button class="btn primary" id="btn-share"><svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>Dela resultat</button>
       <button class="btn" data-open="dlg-stats">Statistik</button>
     </div>
+    ${mode === 'practice' ? '' : '<div class="online" id="online"></div>'}
     <div class="result-rows">${rows}</div>
     ${
       mode === 'daily'
@@ -547,6 +550,108 @@ function openResult() {
   tick();
   countdownTimer = setInterval(tick, 1000);
   openDialog('dlg-result');
+  if (mode !== 'practice') loadOnline();
+}
+
+// ---------------------------------------------------------------------------
+// Online: send today's result, show how everyone else did
+
+function playerId() {
+  let id = store.get('player', null);
+  if (!id) {
+    id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+    store.set('player', id);
+  }
+  return id;
+}
+
+const roundTotal = () => game.puzzles.reduce((s, x) => s + (x.stars ?? 0), 0);
+const countsToday = () => mode === 'daily' && dayId === todayId();
+
+let syncing = Promise.resolve();
+function syncResult() {
+  if (!game.finished || !countsToday() || game.submitted) return syncing;
+  syncing = submitResult({
+    day: dayId,
+    player: playerId(),
+    name: settings.name,
+    stars: game.puzzles.map((x) => x.stars),
+    elapsed: game.elapsed,
+  })
+    .then(() => {
+      game.submitted = true;
+      if (settings.name) game.named = true;
+      save();
+    })
+    .catch(() => {
+      /* offline: try again next time the page opens */
+    });
+  return syncing;
+}
+
+const fmtAvg = (v) => (v == null ? '–' : String(v).replace('.', ','));
+
+async function loadOnline() {
+  const box = $('#online');
+  if (!box) return;
+  box.innerHTML = '<p class="muted small">Hämtar hur det gick för andra…</p>';
+  try {
+    await syncing;
+    const [sum, top] = await Promise.all([daySummary(dayId), leaderboard(dayId)]);
+    if (!$('#online')) return;
+    const total = roundTotal();
+    let html = '';
+    if (sum?.players) {
+      const beat = beatShare(sum.hist, total);
+      const max = Math.max(1, ...sum.hist);
+      html += `<div class="today-stats">
+          <div><b>${sum.players}</b><span>spelare ${mode === 'daily' ? 'idag' : 'den dagen'}</span></div>
+          <div><b>${fmtAvg(sum.avg)}</b><span>snitt ★</span></div>
+          <div><b>${beat}%</b><span>du slog</span></div>
+        </div>
+        <div class="hist" aria-label="Hur många som fick varje antal stjärnor">${sum.hist
+          .map((c, i) => `<span class="${i === total ? 'me' : ''}" style="height:${Math.max(4, (c / max) * 100)}%" title="${i} ★: ${c} spelare"></span>`)
+          .join('')}</div>
+        <div class="hist-axis"><span>0 ★</span><span>15 ★</span></div>`;
+    }
+    html += '<h3>Snabbast med 15/15</h3>';
+    if (top?.length) {
+      html += `<ol class="board">${top
+        .map((r) => `<li class="${r.elapsed_ms === Math.round(game.elapsed) && total === 15 ? 'me' : ''}"><span>${esc(r.name)}</span><b>${formatDuration(r.elapsed_ms)}</b></li>`)
+        .join('')}</ol>`;
+    } else {
+      html += `<p class="muted small">Ingen har fått alla 15 stjärnor ${mode === 'daily' ? 'än idag. Bli först!' : 'den dagen.'}</p>`;
+    }
+    if (total === 15 && countsToday() && !game.named) {
+      html += `<form class="name-form" id="name-form">
+          <label for="name-input">Skriv ditt namn på topplistan</label>
+          <div><input id="name-input" maxlength="20" autocomplete="nickname" placeholder="Ditt namn" value="${esc(settings.name || '')}" />
+          <button class="btn primary" type="submit">Spara</button></div>
+        </form>`;
+    }
+    box.innerHTML = html;
+    $('#name-form')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const name = $('#name-input').value.trim().slice(0, 20);
+      if (!name) return;
+      settings.name = name;
+      saveSettings();
+      try {
+        await syncing;
+        await setName(dayId, playerId(), name);
+        game.named = true;
+        save();
+        toast('Namnet är sparat');
+        loadOnline();
+      } catch {
+        toast('Kunde inte spara namnet. Försök igen.');
+      }
+    });
+  } catch {
+    if ($('#online')) $('#online').innerHTML = '<p class="muted small">Kunde inte hämta andras resultat just nu.</p>';
+  }
 }
 
 async function share() {
@@ -734,6 +839,7 @@ function burst(count) {
 
 renderMeta();
 applyTheme();
+syncResult();
 render();
 if (!store.get('seenHelp', false)) openDialog('dlg-help');
 else if (game.finished && mode === 'daily') setTimeout(openResult, 300);

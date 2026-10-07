@@ -38,3 +38,12 @@ test('dates', () => {
   assert.equal(puzzleNumber('2026-10-07'), 1);
   assert.equal(addDays('2026-10-31', 1), '2026-11-01');
 });
+
+test('share of players with fewer stars', async () => {
+  const { beatShare } = await import('../js/online.js');
+  const hist = Array(16).fill(0);
+  hist[5] = 2; hist[10] = 1; hist[15] = 1;
+  assert.equal(beatShare(hist, 15), 75);
+  assert.equal(beatShare(hist, 5), 0);
+  assert.equal(beatShare(Array(16).fill(0), 9), 0);
+});
