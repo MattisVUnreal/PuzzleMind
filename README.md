@@ -34,6 +34,23 @@ det är tänkt, så de svårare talen kräver verkligen fler steg:
 Allt räknas fram i webbläsaren utifrån datumet. Det behövs ingen server och
 inget byggsteg.
 
+## Snitt och topplista (Supabase)
+
+Efter rundan visas hur det gick för alla andra: antal spelare, snittet,
+fördelningen av stjärnor och en topplista över de snabbaste med 15/15.
+Resultaten sparas i en gratis Supabase-databas. Spelet fungerar som vanligt
+även om den inte går att nå.
+
+Engångsinstallation: öppna Supabase-projektet → **SQL Editor** → **New query**,
+klistra in hela `supabase/schema.sql` och tryck **Run**.
+
+- Spelare kan bara *lägga till* ett resultat för dagens datum, aldrig läsa,
+  ändra eller ta bort rader.
+- Snitt och topplista hämtas via funktioner som bara lämnar ut
+  sammanställningar och namn.
+- Adressen och den publika nyckeln står i `js/online.js`. Nyckeln är gjord för
+  att vara publik.
+
 ## Köra lokalt
 
 ```sh
@@ -47,5 +64,7 @@ Sidan kan läggas på vilken statisk webbhost som helst, till exempel GitHub Pag
 | --- | --- |
 | `js/numbers.js` | Räknesätt, generator och lösare |
 | `js/round.js` | Stjärnor, statistik och delningstext |
+| `js/online.js` | Skickar resultat, hämtar snitt och topplista |
+| `supabase/schema.sql` | Databastabell, säkerhetsregler och funktioner |
 | `js/date.js` | Dagar och numrering (`EPOCH` = dag #1) |
 | `js/app.js` | Gränssnittet |
