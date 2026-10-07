@@ -205,6 +205,8 @@ h1, h2, h3 { margin: 0; line-height: 1.15; text-wrap: balance; }
 .calc { display: grid; justify-items: center; gap: 8px; padding: 12px 10px; border-radius: 16px; background: var(--sheet-2); }
 .calc-step { margin: 0; text-align: center; font-size: 15px; max-width: 40ch; }
 .calc-step b { color: var(--accent); }
+.calc-tip { display: inline-block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+.example { padding: 10px 12px; border-radius: 12px; background: var(--sheet-2); font-size: 15px; }
 .calc-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .cbox {
   min-width: 48px; height: 44px; padding: 0 8px; border-radius: 12px; border: 2px dashed var(--line-strong);
@@ -419,3 +421,4 @@ h1, h2, h3 { margin: 0; line-height: 1.15; text-wrap: balance; }
 
 /* Set by the game from the device setting or the player's choice. */
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+.nowrap { white-space: nowrap; }

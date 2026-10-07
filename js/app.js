@@ -248,10 +248,12 @@ function renderCalc(slots, done) {
   const sym = (v) => `<span class="csym">${v}</span>`;
   let step, row;
   if (lastEq && sel === null) {
-    step = `<b>Bra!</b> Det nya talet ${lastEq.value} ligger bland dina tal. Tryck på ett tal för att räkna vidare.`;
+    step = `<b>Bra!</b> ${lastEq.a} och ${lastEq.b} blev <b>${lastEq.value}</b>. Räkna vidare med ${lastEq.value} och dina andra tal.`;
     row = box(lastEq.a, 'filled') + box(lastEq.op, `filled op ${OP_CLASS[lastEq.op]}`) + box(lastEq.b, 'filled') + sym('=') + box(lastEq.value, 'result');
   } else if (sel === null) {
-    step = '<b>Steg 1 av 3:</b> Tryck på ett tal.';
+    step = curState().steps.length
+      ? '<b>Steg 1 av 3:</b> Tryck på ett tal.'
+      : '<b>Steg 1 av 3:</b> Tryck på ett tal.<br><span class="calc-tip">Två tal blir ett nytt tal som du kan räkna vidare med.</span>';
     row = box('?', 'next') + box('', 'op') + box('') + sym('=') + box('');
   } else if (op === null) {
     step = '<b>Steg 2 av 3:</b> Välj <b>+</b> plus, <b>−</b> minus, <b>×</b> gånger eller <b>÷</b> delat.';
