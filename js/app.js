@@ -45,6 +45,7 @@ function shake(node) {
   node.classList.add('shake');
 }
 
+const OP_CLASS = { '+': 'op-plus', '−': 'op-minus', '×': 'op-times', '÷': 'op-divide' };
 const stars = (n) => `<b>${'★'.repeat(n)}</b>${'☆'.repeat(3 - n)}`;
 const randomId = () => Math.random().toString(36).slice(2, 8);
 
@@ -136,7 +137,7 @@ function renderProgress() {
   nav.innerHTML = round
     .map((p, i) => {
       const st = game.puzzles[i];
-      const cls = ['prog', i === cur() ? 'current' : '', st.done ? 'done' : ''].join(' ');
+      const cls = ['prog', `lv-${i + 1}`, i === cur() ? 'current' : '', st.done ? 'done' : ''].join(' ');
       const label = st.done ? `Tal ${i + 1}: ${st.stars} av 3 stjärnor` : `Tal ${i + 1}`;
       return `<button class="${cls}" data-i="${i}" aria-label="${label}" ${i === cur() ? 'aria-current="step"' : ''}>
         <span class="n">${i + 1}</span><span class="st">${st.done ? stars(st.stars) : '☆☆☆'}</span></button>`;
@@ -161,6 +162,8 @@ function renderPuzzle() {
   const st = curState();
   const { slots, lines, best } = board(i);
 
+  const sheet = document.querySelector('.sheet');
+  sheet.className = `sheet lv-${i + 1}`;
   $('#puzzle-title').textContent = `Tal ${i + 1} av ${PUZZLES}`;
   $('#puzzle-bands').innerHTML = `Exakt ${stars(3)} · ±${p.near} ${stars(2)} · ±${p.ok} ${stars(1)}`;
   const target = $('#target');
@@ -236,7 +239,7 @@ function renderCalc(slots, done) {
   let step, row;
   if (lastEq && sel === null) {
     step = `<b>Bra!</b> Det nya talet ${lastEq.value} ligger bland dina tal. Tryck på ett tal för att räkna vidare.`;
-    row = box(lastEq.a, 'filled') + box(lastEq.op, 'filled op') + box(lastEq.b, 'filled') + sym('=') + box(lastEq.value, 'result');
+    row = box(lastEq.a, 'filled') + box(lastEq.op, `filled op ${OP_CLASS[lastEq.op]}`) + box(lastEq.b, 'filled') + sym('=') + box(lastEq.value, 'result');
   } else if (sel === null) {
     step = '<b>Steg 1 av 3:</b> Tryck på ett tal.';
     row = box('?', 'next') + box('', 'op') + box('') + sym('=') + box('');
@@ -245,7 +248,7 @@ function renderCalc(slots, done) {
     row = box(slots[sel].v, 'filled') + box('?', 'next op') + box('') + sym('=') + box('');
   } else {
     step = '<b>Steg 3 av 3:</b> Tryck på talet du vill räkna med.';
-    row = box(slots[sel].v, 'filled') + box(op, 'filled op') + box('?', 'next') + sym('=') + box('?');
+    row = box(slots[sel].v, 'filled') + box(op, `filled op ${OP_CLASS[op]}`) + box('?', 'next') + sym('=') + box('?');
   }
   $('#calc-step').innerHTML = step;
   $('#calc-row').innerHTML = row;
