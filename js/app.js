@@ -298,7 +298,7 @@ function render() {
 
 $('#tiles').addEventListener('click', (ev) => {
   const b = ev.target.closest('.tile');
-  if (!b || b.disabled || curState().done) return;
+  if (!b || b.disabled || busy || curState().done) return;
   startClock();
   lastEq = null;
   const k = +b.dataset.k;
@@ -317,7 +317,10 @@ $('#tiles').addEventListener('click', (ev) => {
   combine(sel, k, op, b);
 });
 
-function combine(a, b, operator, node) {
+let busy = false; // true while two numbers are flying together
+
+async function combine(a, b, operator, node) {
+  if (busy) return;
   const { slots } = board(cur());
   const r = applyOp(slots[a].v, slots[b].v, operator);
   if (r.error) {
@@ -325,6 +328,9 @@ function combine(a, b, operator, node) {
     shake(node);
     return;
   }
+  busy = true;
+  await flyTogether(a, b, operator);
+  busy = false;
   curState().steps.push({ a, b, op: operator });
   const [x, y] = operator === '−' || operator === '÷' ? [Math.max(slots[a].v, slots[b].v), Math.min(slots[a].v, slots[b].v)] : [slots[a].v, slots[b].v];
   lastEq = { a: x, op: operator, b: y, value: r.value };
@@ -334,6 +340,61 @@ function combine(a, b, operator, node) {
   renderPuzzle();
   document.querySelector(`.tile[data-k="${b}"]`)?.classList.add('pop');
   if (r.value === round[cur()].target) setTimeout(() => finishPuzzle(r.value), 350);
+}
+
+// The first number flies over to the second, the operator pops up between
+// them, and they merge. Makes it obvious where the new number ends up.
+function flyTogether(a, b, operator) {
+  const ta = document.querySelector(`.tile[data-k="${a}"]`);
+  const tb = document.querySelector(`.tile[data-k="${b}"]`);
+  if (!ta || !tb || !ta.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
+  const ra = ta.getBoundingClientRect(), rb = tb.getBoundingClientRect();
+  const dx = rb.left - ra.left, dy = rb.top - ra.top;
+
+  const ghost = ta.cloneNode(true);
+  ghost.classList.remove('pop');
+  ghost.classList.add('ghost');
+  Object.assign(ghost.style, { left: `${ra.left}px`, top: `${ra.top}px`, width: `${ra.width}px`, height: `${ra.height}px` });
+  const badge = document.createElement('div');
+  badge.className = `fly-op ${OP_CLASS[operator]}`;
+  badge.textContent = operator;
+  Object.assign(badge.style, {
+    left: `${(ra.left + rb.left + (ra.width + rb.width) / 2) / 2}px`,
+    top: `${(ra.top + rb.top + (ra.height + rb.height) / 2) / 2}px`,
+  });
+  document.body.append(ghost, badge);
+  ta.style.visibility = 'hidden';
+
+  const timing = { duration: 460, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' };
+  const anims = [
+    ghost.animate(
+      [
+        { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+        { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 24}px) scale(1.05)`, opacity: 1, offset: 0.5 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.55)`, opacity: 0 },
+      ],
+      timing,
+    ),
+    badge.animate(
+      [
+        { transform: 'translate(-50%, -50%) scale(0)', opacity: 0 },
+        { transform: 'translate(-50%, -50%) scale(1.25)', opacity: 1, offset: 0.3 },
+        { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.7 },
+        { transform: 'translate(-50%, -50%) scale(0.4)', opacity: 0 },
+      ],
+      timing,
+    ),
+    tb.animate(
+      [{ transform: 'scale(1)' }, { transform: 'scale(1)', offset: 0.65 }, { transform: 'scale(1.12)' }],
+      { duration: 460, easing: 'ease-in' },
+    ),
+  ];
+  return Promise.all(anims.map((x) => x.finished))
+    .catch(() => {})
+    .finally(() => {
+      ghost.remove();
+      badge.remove();
+    });
 }
 
 $('#ops').addEventListener('click', (ev) => {
