@@ -1,8 +1,8 @@
 {
-  "name": "puzzlemind",
+  "name": "dagens-tal",
   "version": "1.0.0",
   "private": true,
-  "description": "A hard daily logic-grid puzzle with golf scoring.",
+  "description": "Dagens tal: ett räknepussel om dagen.",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",

@@ -1,60 +1,51 @@
-# PuzzleMind ⛳
+# Dagens tal
 
-**One hard logic-grid puzzle a day. Five strokes. Par 3.**
+**Ett räknepussel om dagen.** Kombinera sex tal med + − × ÷ och försök nå
+måltalet. Varje dag finns fem tal som blir lite svårare för varje steg, och
+varje tal ger upp till tre stjärnor. Alla spelar samma tal samma dag.
 
-Every day, everyone gets the same logic puzzle: a story, a set of clues, and a
-classic logic grid. Work out who goes with what, fill in your scorecard, and
-take your shot. Each wrong shot tells you how many links you got right per
-category. Solve it in as few strokes as you can and share your round.
+## Så funkar det
 
-## Features
+- Tryck på ett tal, ett räknesätt och ett till tal. De två talen blir ett nytt tal.
+- Det blir alltid heltal. Minus och delat tar automatiskt det större talet först.
+- Exakt rätt ger ★★★, nära ger ★★, lite längre bort ger ★. Hur nära som räknas
+  står vid varje tal.
+- Kommer man inte ända fram kan man lämna in det tal som är närmast.
+- En ledtråd visar första steget i en lösning men kostar en stjärna.
 
-- **Guaranteed fair puzzles.** Every puzzle has exactly one solution that pure
-  deduction can reach, with no guessing. The generator only accepts puzzles its
-  logical solver can finish, and the tests check uniqueness by brute force.
-- **Weekly difficulty ramp.** Mon *Gentle* → Tue *Steady* → Wed *Tricky* →
-  Thu *Tough* → Fri *Fierce* → Sat *Savage* → Sun *Monster*. From Wednesday
-  on, puzzles *require* "suppose… contradiction" reasoning, and the grader
-  counts how many such steps each puzzle needs.
-- **Golf scoring.** 1 stroke = Hole in one, 2 = Birdie, 3 = Par, 4 = Bogey,
-  5 = Double bogey, out of strokes = Lost ball. A *penalty stroke* reveals one
-  correct link.
-- **Spoiler-free share card** with per-category feedback squares, time and streak.
-- **Stats:** streaks, score distribution and a nine-hole golf scorecard.
-- **Archive and practice range:** replay past dailies, or play endless random
-  puzzles at any difficulty.
-- **Seven story themes** (Night Train, Bake-Off, Heist, Dog Show, Space
-  Station, Marathon, Masquerade) with naturally phrased clues.
-- Logic grid with tap / long-press / right-click / drag-to-paint, keyboard
-  support (arrows, `x`, `o`, space, Ctrl+Z), auto-cross, crosshair highlight
-  and undo. Light and dark themes, mobile friendly.
+Spelet har också en delningsruta (🟩🟩🟨🟧⬜), statistik, antal dagar i rad,
+tidigare dagar och obegränsade träningsrundor. Det har ljust och mörkt tema och
+fungerar bra på mobilen.
 
-No backend and no build step: the daily puzzle is generated deterministically
-from the date in the browser.
+## Garanterat lösbart
 
-## Running locally
+Varje måltal skapas genom att räkna med de sex talen, så det går alltid att nå
+exakt. Sedan kontrollerar generatorn att talet inte går att nå med färre steg än
+det är tänkt, så de svårare talen kräver verkligen fler steg:
+
+| Tal | Stora tal (25–100) | Steg som krävs | Måltal |
+| --- | --- | --- | --- |
+| 1 | 0 | 2 | 12–60 |
+| 2 | 1 | 2 | 30–150 |
+| 3 | 1 | 3 | 100–400 |
+| 4 | 2 | 3 | 150–600 |
+| 5 | 2 | 4 | 250–999 |
+
+Allt räknas fram i webbläsaren utifrån datumet. Det behövs ingen server och
+inget byggsteg.
+
+## Köra lokalt
 
 ```sh
-npm start          # serves the site on http://localhost:8080
-npm test           # engine + game-rule tests (Node 20+)
+npm start   # startar sidan på http://localhost:8080
+npm test    # testar generatorn och poängreglerna (Node 20+)
 ```
 
-Any static host works (GitHub Pages, Netlify, Cloudflare Pages). Just serve
-the repository root.
+Sidan kan läggas på vilken statisk webbhost som helst, till exempel GitHub Pages.
 
-## How it works
-
-| File | Purpose |
+| Fil | Innehåll |
 | --- | --- |
-| `js/engine.js` | Solver (constraint propagation + one level of what-if reasoning), clue generation, minimisation, grading, clue text |
-| `js/profiles.js` | Per-weekday difficulty settings |
-| `js/themes.js` | Story themes, categories and clue phrasing |
-| `js/game.js` | Strokes, golf terms, guess evaluation, stats, share text |
-| `js/date.js` | Local-midnight day ids and puzzle numbering (`EPOCH` = puzzle #1) |
-| `js/app.js` | UI |
-
-Generating a puzzle: pick a theme and a random solution → build a pool of
-true clues (direct, negative, either/or, pairs, all-different, comparisons and
-exact offsets on an ordered category) → add clues until the solver finishes
-the grid → remove every clue that isn't needed → check the difficulty matches
-the day, retrying with the same seeded RNG if it doesn't.
+| `js/numbers.js` | Räknesätt, generator och lösare |
+| `js/round.js` | Stjärnor, statistik och delningstext |
+| `js/date.js` | Dagar och numrering (`EPOCH` = dag #1) |
+| `js/app.js` | Gränssnittet |

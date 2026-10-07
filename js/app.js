@@ -1,23 +1,17 @@
-import { generatePuzzle } from './engine.js';
-import { PROFILES, profileForWeekday } from './profiles.js';
-import {
-  EPOCH, todayId, isDayId, puzzleNumber, weekday, formatDay, msUntilMidnight, formatDuration, addDays,
-} from './date.js';
-import {
-  MAX_STROKES, LOST_STROKES, PAR, TERMS, evaluateGuess, newGame, strokesUsed, finalStrokes, termFor, relToPar,
-  shareText, computeStats, squaresFor,
-} from './game.js';
+import { generateRound, applyOp } from './numbers.js';
+import { MAX_STARS, PUZZLES, RESULTS, resultFor, starString, puzzleStars, shareText, computeStats } from './round.js';
+import { EPOCH, todayId, isDayId, puzzleNumber, formatDay, msUntilMidnight, formatDuration, addDays } from './date.js';
 
 // ---------------------------------------------------------------------------
 // Utilities
 
-const $ = (sel, root = document) => root.querySelector(sel);
+const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
 const store = {
   get(key, fallback) {
     try {
-      const v = localStorage.getItem(`pm:${key}`);
+      const v = localStorage.getItem(`dt:${key}`);
       return v ? JSON.parse(v) : fallback;
     } catch {
       return fallback;
@@ -25,14 +19,14 @@ const store = {
   },
   set(key, value) {
     try {
-      localStorage.setItem(`pm:${key}`, JSON.stringify(value));
+      localStorage.setItem(`dt:${key}`, JSON.stringify(value));
     } catch {
-      /* storage unavailable: play continues without persistence */
+      /* no storage: the game still works, it just won't remember */
     }
   },
 };
 
-const settings = Object.assign({ theme: 'system', autoX: true, confirm: true, timer: true }, store.get('settings', {}));
+const settings = Object.assign({ theme: 'system', confirm: true, timer: true }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
 
 let toastTimer;
@@ -45,88 +39,72 @@ function toast(msg, ms = 2600) {
 }
 
 function shake(node) {
+  if (!node) return;
   node.classList.remove('shake');
   void node.offsetWidth;
   node.classList.add('shake');
 }
 
+const stars = (n) => `<b>${'★'.repeat(n)}</b>${'☆'.repeat(3 - n)}`;
+const randomId = () => Math.random().toString(36).slice(2, 8);
+
 // ---------------------------------------------------------------------------
-// Route: today's daily, an archived daily (?day=YYYY-MM-DD) or practice.
+// Route: today, an earlier day (#dag-YYYY-MM-DD) or practice (#traning-<id>)
 
 const today = todayId();
-// Routes live in the hash so they work on any static host and inside
-// sandboxed embeds: #day-YYYY-MM-DD (archive) or #practice-<level>-<seed>.
 const route = location.hash.slice(1);
 let mode = 'daily';
 let dayId = today;
 let seed = today;
-let profile = profileForWeekday(weekday(today));
 
-const practiceMatch = route.match(/^practice-(\d)-([a-z0-9]+)$/i);
-const dayMatch = route.match(/^day-(\d{4}-\d{2}-\d{2})$/);
+const practiceMatch = route.match(/^traning-([a-z0-9]+)$/i);
+const dayMatch = route.match(/^dag-(\d{4}-\d{2}-\d{2})$/);
 if (practiceMatch) {
   mode = 'practice';
-  const lvl = Number(practiceMatch[1]);
-  profile = PROFILES[lvl < 7 ? lvl : weekday(today)];
-  seed = `practice:${practiceMatch[2]}`;
+  seed = `traning:${practiceMatch[1]}`;
 } else if (dayMatch && isDayId(dayMatch[1]) && dayMatch[1] < today && dayMatch[1] >= EPOCH) {
   mode = 'archive';
   dayId = dayMatch[1];
   seed = dayId;
-  profile = profileForWeekday(weekday(dayId));
 }
 window.addEventListener('hashchange', () => location.reload());
 
-const puzzle = generatePuzzle(seed, profile);
-const gameKey = mode === 'practice' ? `game:${seed}:${profile.day}` : `game:${dayId}`;
-const game = Object.assign(newGame(gameKey), store.get(gameKey, {}));
-const { k, n, cats, solution } = puzzle;
+const round = generateRound(seed);
+const gameKey = mode === 'practice' ? `game:${seed}` : `game:${dayId}`;
 const number = mode === 'practice' ? null : puzzleNumber(dayId);
-
-// inverse solution: inv[c][x] = person
-const inv = cats.map((_, c) => {
-  const row = [];
-  solution.forEach((r, e) => (row[r[c]] = e));
-  return row;
+const blank = () => ({
+  current: 0,
+  puzzles: round.map(() => ({ steps: [], hint: false, done: false, value: null, stars: null })),
+  elapsed: 0,
+  started: false,
+  finished: false,
 });
-
+const game = Object.assign(blank(), store.get(gameKey, {}));
 const save = () => store.set(gameKey, game);
-const playing = () => game.status === 'playing';
+
+let sel = null; // selected slot
+let op = null; // chosen operator
 
 // ---------------------------------------------------------------------------
-// Marks model
+// Board state, rebuilt by replaying the steps
 
-const key = (c1, x1, c2, x2) => (c1 < c2 ? `${c1}.${x1}.${c2}.${x2}` : `${c2}.${x2}.${c1}.${x1}`);
-const parseKey = (kk) => kk.split('.').map(Number);
-const markOf = (kk) => game.marks[kk] || 0;
-const isLocked = (kk) => game.locked.includes(kk);
-const isTrueLink = (c1, x1, c2, x2) => inv[c1][x1] === inv[c2][x2];
-
-function setMark(kk, v) {
-  if (isLocked(kk)) return false;
-  if (v) game.marks[kk] = v;
-  else delete game.marks[kk];
-  return true;
+function board(i) {
+  const p = round[i];
+  const slots = p.numbers.map((v) => ({ v, made: false }));
+  const lines = [];
+  let best = p.numbers.reduce((b, v) => (Math.abs(v - p.target) < Math.abs(b - p.target) ? v : b), p.numbers[0]);
+  for (const s of game.puzzles[i].steps) {
+    const r = applyOp(slots[s.a].v, slots[s.b].v, s.op);
+    slots[s.b] = { v: r.value, made: true };
+    slots[s.a] = null;
+    lines.push(`${r.text} = <b>${r.value}</b>`);
+    if (Math.abs(r.value - p.target) < Math.abs(best - p.target)) best = r.value;
+  }
+  return { slots, lines, best };
 }
 
-// Is there a ● elsewhere in this cell's row or column (within its subgrid)?
-function lineTick(c1, x1, c2, x2) {
-  for (let y = 0; y < n; y++) if (y !== x2 && markOf(key(c1, x1, c2, y)) === 2) return true;
-  for (let z = 0; z < n; z++) if (z !== x1 && markOf(key(c1, z, c2, x2)) === 2) return true;
-  return false;
-}
-
-const undoStack = [];
-function snapshot() {
-  undoStack.push(JSON.stringify(game.marks));
-  if (undoStack.length > 300) undoStack.shift();
-}
-function undo() {
-  if (!playing() || !undoStack.length) return;
-  game.marks = JSON.parse(undoStack.pop());
-  for (const kk of game.locked) game.marks[kk] = 2;
-  changed();
-}
+const cur = () => game.current;
+const curState = () => game.puzzles[cur()];
 
 function startClock() {
   if (!game.started) {
@@ -135,549 +113,326 @@ function startClock() {
   }
 }
 
-// What the scorecard currently says for person e in category c.
-function pickFor(e, c) {
-  const ticks = [];
-  for (let x = 0; x < n; x++) if (markOf(key(0, e, c, x)) === 2) ticks.push(x);
-  if (ticks.length === 1) return { x: ticks[0], implied: false };
-  if (ticks.length > 1) return { x: null, conflict: true };
-  const open = [];
-  for (let x = 0; x < n; x++) {
-    const kk = key(0, e, c, x);
-    if (markOf(kk) === 0 && !lineTick(0, e, c, x)) open.push(x);
-  }
-  return open.length === 1 ? { x: open[0], implied: true } : { x: null };
-}
-
-function currentGuess() {
-  const guess = [];
-  let complete = true;
-  for (let e = 0; e < n; e++) {
-    guess[e] = [e];
-    for (let c = 1; c < k; c++) {
-      const p = pickFor(e, c);
-      guess[e][c] = p.x;
-      if (p.x === null) complete = false;
-    }
-  }
-  const dupCats = new Set();
-  for (let c = 1; c < k; c++) {
-    const seen = new Set();
-    for (let e = 0; e < n; e++) {
-      const x = guess[e][c];
-      if (x === null) continue;
-      if (seen.has(x)) dupCats.add(c);
-      seen.add(x);
-    }
-  }
-  return { guess, complete, dupCats };
-}
-
 // ---------------------------------------------------------------------------
-// Header
+// Rendering
 
-function renderHeader() {
-  const diffIdx = [1, 2, 3, 4, 5, 6, 0].indexOf(PROFILES.indexOf(profile)) + 1;
-  const pips = '●'.repeat(diffIdx) + '○'.repeat(7 - diffIdx);
-  $('#day-pill').innerHTML = `${esc(profile.day)} · ${esc(profile.name)} <span class="pips" aria-hidden="true">${pips}</span>`;
-  $('#day-label').textContent =
-    mode === 'practice' ? 'Practice range' : `Hole #${number} · ${formatDay(dayId)}`;
-  $('#theme-title').innerHTML = `<span class="ic" aria-hidden="true">${puzzle.theme.icon}</span>${esc(puzzle.theme.title)}`;
-  $('#theme-intro').textContent = puzzle.theme.intro;
-  document.title = `PuzzleMind ${number ? `#${number}` : 'practice'} · ${puzzle.theme.title}`;
-
+function renderMeta() {
+  $('#round-label').textContent =
+    mode === 'practice' ? 'Träningsrunda' : `Dagens tal #${number} · ${formatDay(dayId)}`;
+  document.title = mode === 'practice' ? 'Dagens tal · träning' : `Dagens tal #${number}`;
   const banner = $('#mode-banner');
-  if (mode !== 'daily') {
+  if (mode === 'practice') {
     banner.hidden = false;
-    banner.innerHTML =
-      mode === 'practice'
-        ? `<span>🏌️ Practice puzzle. It doesn't count toward your stats.</span><span><a href="${practiceHref(PROFILES.indexOf(profile))}">New practice puzzle</a> · <a href="#today">Today's hole</a></span>`
-        : `<span>📅 Archive: ${esc(formatDay(dayId))}. Replays don't affect streaks.</span><a href="#today">Back to today's hole</a>`;
+    banner.innerHTML = `<span>Träning. Räknas inte i statistiken.</span><span><a href="#traning-${randomId()}">Ny träningsrunda</a> · <a href="#idag">Dagens tal</a></span>`;
+  } else if (mode === 'archive') {
+    banner.hidden = false;
+    banner.innerHTML = `<span>Du spelar ${esc(formatDay(dayId))}. Räknas inte i statistiken.</span><a href="#idag">Till dagens tal</a>`;
   }
 }
 
-function practiceHref(level) {
-  return `#practice-${level}-${Math.random().toString(36).slice(2, 8)}`;
+function renderProgress() {
+  const nav = $('#progress');
+  nav.innerHTML = round
+    .map((p, i) => {
+      const st = game.puzzles[i];
+      const cls = ['prog', i === cur() ? 'current' : '', st.done ? 'done' : ''].join(' ');
+      const label = st.done ? `Tal ${i + 1}: ${st.stars} av 3 stjärnor` : `Tal ${i + 1}`;
+      return `<button class="${cls}" data-i="${i}" aria-label="${label}" ${i === cur() ? 'aria-current="step"' : ''}>
+        <span class="n">${i + 1}</span><span class="st">${st.done ? stars(st.stars) : '☆☆☆'}</span></button>`;
+    })
+    .join('');
 }
 
-// ---------------------------------------------------------------------------
-// Clues
-
-const itemHtml = (text) =>
-  esc(text).replace(/\{\{(\d+):([^}]*)\}\}/g, (_, c, label) => `<span class="ci c-${c}">${label}</span>`);
-
-function renderClues() {
-  const list = $('#clues');
-  list.innerHTML = '';
-  puzzle.clues.forEach((cl, i) => {
-    const li = document.createElement('li');
-    li.className = 'clue';
-    li.tabIndex = 0;
-    li.dataset.id = cl.id;
-    li.innerHTML = `<span class="num">${i + 1}</span><span class="txt">${itemHtml(cl.text)}</span>`;
-    const toggle = () => {
-      const s = new Set(game.struck);
-      s.has(cl.id) ? s.delete(cl.id) : s.add(cl.id);
-      game.struck = [...s];
-      li.classList.toggle('done', s.has(cl.id));
-      save();
-    };
-    li.addEventListener('click', toggle);
-    li.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') {
-        ev.preventDefault();
-        toggle();
-      }
-    });
-    li.classList.toggle('done', game.struck.includes(cl.id));
-    list.appendChild(li);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Logic grid (classic staircase layout)
-
-const colCats = [...Array(k - 1).keys()].map((i) => i + 1); // 1..k-1
-const rowCats = [0, ...[...Array(k - 2).keys()].map((i) => k - 1 - i)]; // 0, k-1 .. 2
-const cellEls = new Map(); // key -> td
-const cellPos = new Map(); // "row,col" -> td
-const rowHeads = new Map(); // "c.x" -> th
-const colHeads = new Map();
-
-function buildGrid() {
-  const table = $('#grid');
-  table.innerHTML = '';
-  const thead = document.createElement('thead');
-  const tr1 = document.createElement('tr');
-  tr1.innerHTML = `<th class="corner" colspan="2" rowspan="2"></th>`;
-  for (const c of colCats) {
-    tr1.insertAdjacentHTML('beforeend', `<th class="cat-col c-${c}" colspan="${n}">${esc(cats[c].name)}</th>`);
-  }
-  const tr2 = document.createElement('tr');
-  for (const c of colCats) {
-    cats[c].items.forEach((it, x) => {
-      const th = document.createElement('th');
-      th.className = 'item-col';
-      th.title = it.label;
-      th.innerHTML = `<span>${esc(it.short)}</span>`;
-      colHeads.set(`${c}.${x}`, th);
-      tr2.appendChild(th);
-    });
-  }
-  thead.append(tr1, tr2);
-
-  const tbody = document.createElement('tbody');
-  let rowIdx = 0;
-  rowCats.forEach((r) => {
-    cats[r].items.forEach((it, x) => {
-      const tr = document.createElement('tr');
-      if (x === 0) {
-        tr.insertAdjacentHTML('beforeend', `<th class="cat-row c-${r}" rowspan="${n}"><span>${esc(cats[r].name)}</span></th>`);
-      }
-      const th = document.createElement('th');
-      th.className = 'item-row';
-      th.title = it.label;
-      th.textContent = it.short;
-      rowHeads.set(`${r}.${x}`, th);
-      tr.appendChild(th);
-
-      let colIdx = 0;
-      for (const c of colCats) {
-        if (r !== 0 && c >= r) {
-          const td = document.createElement('td');
-          td.className = 'void';
-          td.colSpan = n;
-          tr.appendChild(td);
-          colIdx += n;
-          continue;
-        }
-        for (let y = 0; y < n; y++) {
-          const td = document.createElement('td');
-          const kk = key(r, x, c, y);
-          td.className = 'cell';
-          if (y === 0) td.classList.add('bl');
-          if (x === 0) td.classList.add('bt');
-          if (y === n - 1) td.classList.add('br');
-          if (x === n - 1) td.classList.add('bb');
-          td.dataset.key = kk;
-          td.dataset.r = r;
-          td.dataset.x = x;
-          td.dataset.c = c;
-          td.dataset.y = y;
-          td.dataset.row = rowIdx;
-          td.dataset.col = colIdx;
-          td.tabIndex = -1;
-          td.setAttribute('role', 'button');
-          td.setAttribute('aria-label', `${it.label} and ${cats[c].items[y].label}`);
-          cellEls.set(kk, td);
-          cellPos.set(`${rowIdx},${colIdx}`, td);
-          tr.appendChild(td);
-          colIdx++;
-        }
-      }
-      tbody.appendChild(tr);
-      rowIdx++;
-    });
-  });
-  table.append(thead, tbody);
-  const first = cellPos.get('0,0');
-  if (first) first.tabIndex = 0;
-  bindGridEvents(table);
-}
-
-function refreshGrid() {
-  const done = !playing();
-  $('#grid').classList.toggle('readonly', done);
-  for (const [kk, td] of cellEls) {
-    const [c1, x1, c2, x2] = parseKey(kk);
-    const m = markOf(kk);
-    const locked = isLocked(kk);
-    const inLine = lineTick(c1, x1, c2, x2);
-    td.classList.toggle('is-tick', m === 2);
-    td.classList.toggle('is-lock', locked);
-    td.classList.toggle('is-conflict', m === 2 && !locked && inLine);
-    td.classList.toggle('is-cross', m === 1);
-    td.classList.toggle('is-auto', m === 0 && settings.autoX && inLine);
-    td.classList.toggle('is-sol', done && isTrueLink(c1, x1, c2, x2));
-    const state = m === 2 ? 'confirmed' : m === 1 ? 'ruled out' : 'empty';
-    td.setAttribute('aria-pressed', m === 2 ? 'true' : 'false');
-    td.title = `${cats[c1].items[x1].label} × ${cats[c2].items[x2].label}: ${state}`;
-  }
-}
-
-function cycle(v) {
-  return (v + 1) % 3; // blank -> ✕ -> ● -> blank
-}
-
-function applyToCell(td, value, { pop = true } = {}) {
-  const kk = td.dataset.key;
-  if (isLocked(kk)) {
-    shake(td);
-    return false;
-  }
-  if (markOf(kk) === value) return false;
-  setMark(kk, value);
-  if (pop) {
-    td.classList.remove('pop');
-    void td.offsetWidth;
-    td.classList.add('pop');
-  }
-  return true;
-}
-
-function bindGridEvents(table) {
-  let paint = null; // { value } while dragging with a mouse
-  let press = null; // long-press state for touch/pen
-
-  table.addEventListener('contextmenu', (ev) => {
-    if (ev.target.closest('.cell')) ev.preventDefault();
-  });
-
-  table.addEventListener('pointerdown', (ev) => {
-    const td = ev.target.closest('.cell');
-    if (!td || !playing()) return;
-    startClock();
-    focusCell(td, false);
-    if (ev.pointerType === 'mouse') {
-      if (ev.button === 2 || ev.shiftKey) {
-        snapshot();
-        applyToCell(td, markOf(td.dataset.key) === 2 ? 0 : 2);
-        changed();
-        return;
-      }
-      if (ev.button !== 0) return;
-      snapshot();
-      const value = cycle(markOf(td.dataset.key));
-      applyToCell(td, value);
-      paint = { value: value === 2 ? null : value };
-      changed();
-      ev.preventDefault();
-    } else {
-      // Touch: tap cycles on pointerup, long press sets ●.
-      press = {
-        td,
-        x: ev.clientX,
-        y: ev.clientY,
-        fired: false,
-        timer: setTimeout(() => {
-          press.fired = true;
-          snapshot();
-          applyToCell(td, markOf(td.dataset.key) === 2 ? 0 : 2);
-          if (navigator.vibrate) navigator.vibrate(12);
-          changed();
-        }, 420),
-      };
-    }
-  });
-
-  table.addEventListener('pointermove', (ev) => {
-    if (press && Math.hypot(ev.clientX - press.x, ev.clientY - press.y) > 10) {
-      clearTimeout(press.timer);
-      press = null; // it's a scroll, not a tap
-    }
-    if (!paint || paint.value === null) return;
-    const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.cell');
-    if (target && table.contains(target) && applyToCell(target, paint.value)) changed();
-  });
-
-  const endPress = (ev) => {
-    paint = null;
-    if (!press) return;
-    clearTimeout(press.timer);
-    if (!press.fired && ev.type === 'pointerup') {
-      snapshot();
-      applyToCell(press.td, cycle(markOf(press.td.dataset.key)));
-      changed();
-    }
-    press = null;
-  };
-  window.addEventListener('pointerup', endPress);
-  table.addEventListener('pointercancel', endPress);
-
-  table.addEventListener('pointerover', (ev) => {
-    const td = ev.target.closest('.cell');
-    highlight(td);
-  });
-  table.addEventListener('pointerleave', () => highlight(null));
-
-  table.addEventListener('keydown', (ev) => {
-    const td = ev.target.closest('.cell');
-    if (!td) return;
-    const row = +td.dataset.row, col = +td.dataset.col;
-    const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
-    if (moves[ev.key]) {
-      ev.preventDefault();
-      const [dr, dc] = moves[ev.key];
-      let r = row + dr, c = col + dc;
-      for (let i = 0; i < 40; i++, r += dr, c += dc) {
-        const next = cellPos.get(`${r},${c}`);
-        if (next) {
-          focusCell(next, true);
-          break;
-        }
-      }
-      return;
-    }
-    if (!playing()) return;
-    const actions = { ' ': () => cycle(markOf(td.dataset.key)), Enter: () => cycle(markOf(td.dataset.key)), x: () => 1, X: () => 1, o: () => 2, O: () => 2, Backspace: () => 0, Delete: () => 0 };
-    if (actions[ev.key]) {
-      ev.preventDefault();
-      startClock();
-      snapshot();
-      applyToCell(td, actions[ev.key]());
-      changed();
-    }
-  });
-}
-
-let focused = null;
-function focusCell(td, move) {
-  if (focused) focused.tabIndex = -1;
-  focused = td;
-  td.tabIndex = 0;
-  if (move) td.focus();
-  highlight(td);
-}
-
-let lastHl = [];
-function highlight(td) {
-  lastHl.forEach((h) => h.classList.remove('hl'));
-  lastHl = [];
-  for (const el of document.querySelectorAll('.cell.xh')) el.classList.remove('xh');
-  if (!td) return;
-  const { r, x, c, y } = td.dataset;
-  const rh = rowHeads.get(`${r}.${x}`), ch = colHeads.get(`${c}.${y}`);
-  [rh, ch].forEach((h) => h && (h.classList.add('hl'), lastHl.push(h)));
-  // Crosshair within the subgrid.
-  for (let i = 0; i < n; i++) {
-    cellEls.get(key(+r, +x, +c, i))?.classList.add('xh');
-    cellEls.get(key(+r, i, +c, +y))?.classList.add('xh');
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Scorecard (answer table)
-
-function renderAnswer() {
-  const table = $('#answer');
-  const done = !playing();
-  const { guess, dupCats } = currentGuess();
-  const last = [...game.log].reverse().find((l) => l.type === 'guess');
-
-  let html = `<thead><tr><th class="c-0">${esc(cats[0].name)}</th>`;
-  for (let c = 1; c < k; c++) html += `<th class="c-${c}">${esc(cats[c].name)}</th>`;
-  html += '</tr></thead><tbody>';
-  for (let e = 0; e < n; e++) {
-    html += `<tr><th>${esc(cats[0].items[e].label)}</th>`;
-    for (let c = 1; c < k; c++) {
-      if (done) {
-        const sol = solution[e][c];
-        const g = last?.guess?.[e]?.[c];
-        const right = g === sol;
-        html += `<td class="${right ? 'sol-right' : 'sol-wrong'}">${!right && g != null ? `<s>${esc(cats[c].items[g].short)}</s>` : ''}${esc(cats[c].items[sol].label)}</td>`;
-        continue;
-      }
-      const p = pickFor(e, c);
-      const kk = p.x !== null ? key(0, e, c, p.x) : null;
-      const cls = [
-        p.x === null ? 'empty' : '',
-        p.implied ? 'implied' : '',
-        dupCats.has(c) && p.x !== null && guess.some((row, e2) => e2 !== e && row[c] === p.x) ? 'dup' : '',
-        kk && isLocked(kk) ? 'locked' : '',
-      ].join(' ');
-      html += `<td><select data-e="${e}" data-c="${c}" class="${cls}" aria-label="${esc(cats[0].items[e].label)}: ${esc(cats[c].name)}">`;
-      html += `<option value="">${p.conflict ? '⚠ conflict' : '—'}</option>`;
-      cats[c].items.forEach((it, x) => {
-        html += `<option value="${x}" ${p.x === x ? 'selected' : ''}>${esc(it.label)}</option>`;
-      });
-      html += '</select></td>';
-    }
-    html += '</tr>';
-  }
-  html += '</tbody>';
-  table.innerHTML = html;
-  $('#answer-hint').textContent = done ? 'Solution' : 'Fills in from your ● marks';
-}
-
-$('#answer').addEventListener('change', (ev) => {
-  const sel = ev.target.closest('select');
-  if (!sel || !playing()) return;
-  startClock();
-  const e = +sel.dataset.e, c = +sel.dataset.c;
-  const x = sel.value === '' ? null : +sel.value;
-  snapshot();
-  // Clear existing ● in this person's row (unless revealed by a hint).
-  for (let y = 0; y < n; y++) {
-    const kk = key(0, e, c, y);
-    if (markOf(kk) === 2 && !isLocked(kk)) setMark(kk, 0);
-  }
-  if (x !== null) {
-    const kk = key(0, e, c, x);
-    if (!lockedClash(e, c, x)) {
-      // Free the column: nobody else can hold this item.
-      for (let z = 0; z < n; z++) {
-        const other = key(0, z, c, x);
-        if (z !== e && markOf(other) === 2 && !isLocked(other)) setMark(other, 0);
-      }
-      setMark(kk, 2);
-    } else {
-      toast('That clashes with a revealed link');
-    }
-  }
-  changed();
+$('#progress').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.prog');
+  if (!b) return;
+  game.current = +b.dataset.i;
+  sel = null;
+  op = null;
+  save();
+  render();
 });
 
-// Would placing ● at (0,e,c,x) clash with a link revealed by a hint?
-function lockedClash(e, c, x) {
-  return game.locked.some((m) => {
-    const [c1, x1, c2, x2] = parseKey(m);
-    return c1 === 0 && c2 === c && (x1 === e) !== (x2 === x);
-  });
-}
+function renderPuzzle() {
+  const i = cur();
+  const p = round[i];
+  const st = curState();
+  const { slots, lines, best } = board(i);
 
-// ---------------------------------------------------------------------------
-// Strokes, history, actions
+  $('#puzzle-title').textContent = `Tal ${i + 1} av ${PUZZLES}`;
+  $('#puzzle-bands').innerHTML = `Exakt ${stars(3)} · ±${p.near} ${stars(2)} · ±${p.ok} ${stars(1)}`;
+  const target = $('#target');
+  target.textContent = p.target;
+  target.classList.toggle('hit', st.done && st.value === p.target);
 
-function renderStrokes() {
-  const used = strokesUsed(game);
-  const balls = $('#balls');
-  balls.innerHTML = '';
-  for (let i = 0; i < MAX_STROKES; i++) {
-    const b = document.createElement('span');
-    b.className = 'ball';
-    const entry = game.log[i];
-    if (entry) {
-      b.classList.add('used');
-      if (entry.type === 'hint') b.classList.add('hint');
-      else if (game.status === 'won' && i === used - 1) b.classList.add('win');
-      else if (game.status === 'lost' && i === used - 1) b.classList.add('lost');
-      b.title = entry.type === 'hint' ? `Stroke ${i + 1}: penalty` : `Stroke ${i + 1}: ${entry.correct}/${n * (k - 1)} links`;
-    } else if (i === used && playing()) {
-      b.classList.add('current');
-      b.title = `Stroke ${i + 1}`;
-    }
-    b.textContent = i + 1;
-    balls.appendChild(b);
-    if (i === PAR - 1) {
-      balls.insertAdjacentHTML(
-        'beforeend',
-        `<span class="par-flag" title="Par ${PAR}"><svg viewBox="0 0 14 18"><path d="M3 1v16"/><path class="f" d="M4 1l9 3.5L4 8z"/></svg>PAR</span>`,
-      );
-    }
-  }
-  const label = $('#stroke-label');
-  if (game.status === 'won') label.textContent = `${termFor(used).name} · ${relToPar(used)}`;
-  else if (game.status === 'lost') label.textContent = 'Lost ball';
-  else label.textContent = `Stroke ${used + 1} of ${MAX_STROKES} · Par ${PAR}`;
-}
+  const dist = Math.abs(best - p.target);
+  $('#closest').innerHTML = st.done
+    ? ''
+    : dist === 0
+      ? ''
+      : `Närmast hittills: <b>${best}</b> (${dist} ifrån)`;
 
-function renderHistory() {
-  const list = $('#history');
-  list.innerHTML = '';
-  game.log.forEach((entry, i) => {
-    const li = document.createElement('li');
-    if (entry.type === 'hint') {
-      li.innerHTML = `<span class="stroke-no">Stroke ${i + 1}</span><span>💡 Penalty: <b class="c-0">${esc(cats[0].items[entry.e].label)}</b> ↔ <b class="c-${entry.c}">${esc(cats[entry.c].items[solution[entry.e][entry.c]].label)}</b></span>`;
+  // tiles
+  const tiles = $('#tiles');
+  tiles.innerHTML = '';
+  slots.forEach((s, k) => {
+    const b = document.createElement('button');
+    b.className = 'tile';
+    b.dataset.k = k;
+    if (!s) {
+      b.classList.add('empty');
+      b.disabled = true;
+      b.setAttribute('aria-label', 'Använd');
     } else {
-      const chips = entry.perCat
-        .map((h, j) => {
-          const cls = h === n ? 'full' : h > 0 ? 'part' : 'none';
-          return `<span class="chip ${cls}"><i></i>${esc(cats[j + 1].name)} ${h}/${n}</span>`;
-        })
-        .join('');
-      li.innerHTML = `<span class="stroke-no">Stroke ${i + 1}</span>${chips}<span class="total">${entry.correct}/${n * (k - 1)}</span>`;
+      b.textContent = s.v;
+      if (s.made) b.classList.add('made');
+      if (String(s.v).length >= 4) b.classList.add('long');
+      if (k === sel) b.classList.add('sel');
+      if (st.done && s.v === p.target) b.classList.add('target-hit');
+      b.setAttribute('aria-label', `${s.v}${k === sel ? ', valt' : ''}`);
+      b.disabled = st.done;
     }
-    list.appendChild(li);
+    tiles.appendChild(b);
   });
-  $('#btn-show-result').hidden = playing();
-}
 
-function updateActions() {
-  const submit = $('#btn-submit'), hint = $('#btn-hint'), note = $('#submit-note');
-  const used = strokesUsed(game);
-  if (!playing()) {
-    submit.disabled = true;
-    hint.disabled = true;
-    $('#submit-label').textContent = game.status === 'won' ? 'Holed out!' : 'Out of strokes';
-    note.textContent = '';
-    return;
+  for (const b of document.querySelectorAll('.op')) {
+    b.classList.toggle('on', b.dataset.op === op);
+    b.disabled = st.done;
   }
-  const { complete, dupCats } = currentGuess();
-  submit.disabled = !complete || dupCats.size > 0;
-  $('#submit-label').textContent = used === MAX_STROKES - 1 ? 'Final shot' : `Take shot ${used + 1}`;
-  hint.disabled = used >= MAX_STROKES - 1;
-  hint.title = hint.disabled ? 'You need your last stroke for a shot' : 'Costs one stroke: reveals one correct link';
-  if (dupCats.size) {
-    const names = [...dupCats].map((c) => cats[c].name.toLowerCase()).join(' and ');
-    note.textContent = `Two ${puzzle.theme.people} share the same ${names}. Each item belongs to exactly one.`;
-  } else if (!complete) {
-    note.textContent = 'Complete every row of the scorecard to take a shot.';
-  } else {
-    note.textContent = used === MAX_STROKES - 1 ? 'Last stroke. Make it count.' : 'Ready when you are.';
-  }
+  $('#ops').hidden = st.done;
+  $('#controls').hidden = st.done;
+  $('#btn-undo').disabled = !st.steps.length;
+  $('#btn-reset').disabled = !st.steps.length;
+  $('#btn-hint').disabled = st.hint;
+
+  const hintBox = $('#hint-box');
+  hintBox.hidden = !st.hint || st.done;
+  hintBox.innerHTML = `💡 Ett sätt att börja: <b>${esc(p.solution[0])}</b>`;
+
+  const submit = $('#btn-submit');
+  submit.hidden = st.done;
+  const preview = puzzleStars(p, best, st.hint);
+  submit.innerHTML = `Lämna in ${best} <span aria-hidden="true">·</span> ${starString(preview)}`;
+  submit.setAttribute('aria-label', `Lämna in ${best}, ger ${preview} av 3 stjärnor`);
+
+  $('#steps').innerHTML = lines.map((l) => `<li>${l}</li>`).join('');
+
+  renderDone();
 }
 
-function changed() {
-  refreshGrid();
-  renderAnswer();
-  updateActions();
-  save();
+function renderDone() {
+  const i = cur();
+  const p = round[i];
+  const st = curState();
+  const box = $('#done-box');
+  box.hidden = !st.done;
+  if (!st.done) return;
+  const res = resultFor(st.stars);
+  const dist = Math.abs(st.value - p.target);
+  const nextOpen = game.puzzles.findIndex((x, j) => !x.done && j !== i);
+  box.innerHTML = `
+    <div class="done-stars" aria-label="${st.stars} av 3 stjärnor">${stars(st.stars)}</div>
+    <div class="done-title">${esc(res.name)}</div>
+    <p class="done-sub">${dist === 0 ? `Du nådde ${p.target} exakt` : `Du lämnade in ${st.value}, ${dist} ifrån`}${st.hint ? ' (med ledtråd)' : ''}.</p>
+    <details class="solution"><summary>Visa en lösning</summary><ol>${p.solution.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></details>
+    ${
+      nextOpen >= 0
+        ? `<button class="btn primary wide" id="btn-next">Nästa tal →</button>`
+        : `<button class="btn primary wide" id="btn-summary">Se dagens resultat</button>`
+    }`;
+  $('#btn-next')?.addEventListener('click', () => {
+    game.current = nextOpen;
+    sel = null;
+    op = null;
+    save();
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  $('#btn-summary')?.addEventListener('click', openResult);
 }
 
-function renderAll() {
-  renderStrokes();
-  refreshGrid();
-  renderAnswer();
-  renderHistory();
-  updateActions();
+function render() {
+  renderProgress();
+  renderPuzzle();
   renderTimer();
 }
 
 // ---------------------------------------------------------------------------
+// Playing
+
+$('#tiles').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.tile');
+  if (!b || b.disabled || curState().done) return;
+  startClock();
+  const k = +b.dataset.k;
+  if (sel === null || op === null) {
+    sel = sel === k ? null : k;
+    op = null;
+    renderPuzzle();
+    return;
+  }
+  if (sel === k) {
+    sel = null;
+    op = null;
+    renderPuzzle();
+    return;
+  }
+  combine(sel, k, op, b);
+});
+
+function combine(a, b, operator, node) {
+  const { slots } = board(cur());
+  const r = applyOp(slots[a].v, slots[b].v, operator);
+  if (r.error) {
+    toast(r.error);
+    shake(node);
+    return;
+  }
+  curState().steps.push({ a, b, op: operator });
+  sel = null;
+  op = null;
+  save();
+  renderPuzzle();
+  document.querySelector(`.tile[data-k="${b}"]`)?.classList.add('pop');
+  if (r.value === round[cur()].target) setTimeout(() => finishPuzzle(r.value), 350);
+}
+
+$('#ops').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.op');
+  if (!b) return;
+  if (sel === null) {
+    toast('Välj ett tal först');
+    shake($('#tiles'));
+    return;
+  }
+  op = op === b.dataset.op ? null : b.dataset.op;
+  renderPuzzle();
+});
+
+function undo() {
+  const st = curState();
+  if (st.done || !st.steps.length) return;
+  st.steps.pop();
+  sel = null;
+  op = null;
+  save();
+  renderPuzzle();
+}
+$('#btn-undo').addEventListener('click', undo);
+$('#btn-reset').addEventListener('click', () => {
+  const st = curState();
+  if (st.done) return;
+  st.steps = [];
+  sel = null;
+  op = null;
+  save();
+  renderPuzzle();
+});
+
+$('#btn-hint').addEventListener('click', async () => {
+  const st = curState();
+  if (st.done || st.hint) return;
+  const ok = await confirmBox('Visa en ledtråd?', 'Du får se första steget i en lösning. Det kostar en stjärna på det här talet.', 'Visa ledtråd', true);
+  if (!ok) return;
+  startClock();
+  st.hint = true;
+  save();
+  renderPuzzle();
+});
+
+$('#btn-submit').addEventListener('click', async () => {
+  const st = curState();
+  if (st.done) return;
+  const p = round[cur()];
+  const { best } = board(cur());
+  const dist = Math.abs(best - p.target);
+  const n = puzzleStars(p, best, st.hint);
+  const ok = await confirmBox(
+    `Lämna in ${best}?`,
+    `Det är ${dist} ifrån ${p.target} och ger ${n} av 3 stjärnor. Du kan inte ändra efteråt.`,
+    'Lämna in',
+  );
+  if (!ok) return;
+  startClock();
+  finishPuzzle(best);
+});
+
+function finishPuzzle(value) {
+  const i = cur();
+  const st = game.puzzles[i];
+  if (st.done) return;
+  st.done = true;
+  st.value = value;
+  st.stars = puzzleStars(round[i], value, st.hint);
+  sel = null;
+  op = null;
+  if (game.puzzles.every((x) => x.done)) finishRound();
+  save();
+  render();
+  if (st.stars === 3) burst(80);
+}
+
+function finishRound() {
+  game.finished = true;
+  const starsList = game.puzzles.map((x) => x.stars);
+  if (mode === 'daily' && todayId() === dayId) {
+    const results = store.get('results', {});
+    results[dayId] = { stars: starsList };
+    store.set('results', results);
+  }
+  save();
+  const total = starsList.reduce((s, x) => s + x, 0);
+  setTimeout(() => {
+    if (total >= 12) burst(160);
+    openResult();
+  }, 900);
+}
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.target.closest('input, select, textarea') || document.querySelector('dialog[open]')) return;
+  const map = { '+': '+', '-': '−', '*': '×', x: '×', '/': '÷' };
+  if (map[ev.key] && sel !== null && !curState().done) {
+    op = map[ev.key];
+    renderPuzzle();
+  } else if (ev.key === 'Backspace' || ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z')) {
+    ev.preventDefault();
+    undo();
+  } else if (ev.key === 'Escape') {
+    sel = null;
+    op = null;
+    renderPuzzle();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Timer
+
+let lastTick = Date.now();
+function renderTimer() {
+  const t = $('#timer');
+  t.hidden = !settings.timer;
+  t.textContent = `⏱ ${formatDuration(game.elapsed)}`;
+}
+setInterval(() => {
+  const now = Date.now();
+  if (!game.finished && game.started && document.visibilityState === 'visible') {
+    game.elapsed += Math.min(now - lastTick, 2000);
+    renderTimer();
+    if (Math.random() < 0.2) save();
+  }
+  lastTick = now;
+}, 1000);
+document.addEventListener('visibilitychange', () => {
+  lastTick = Date.now();
+  if (document.visibilityState === 'hidden') save();
+});
+window.addEventListener('pagehide', save);
+
+// ---------------------------------------------------------------------------
 // Confirm dialog
 
-function confirmBox(title, text, yes = 'OK') {
-  if (!settings.confirm) return Promise.resolve(true);
+function confirmBox(title, text, yes = 'OK', always = false) {
+  if (!settings.confirm && !always) return Promise.resolve(true);
   return new Promise((resolve) => {
     const dlg = $('#dlg-confirm');
     $('#confirm-title').textContent = title;
@@ -685,8 +440,7 @@ function confirmBox(title, text, yes = 'OK') {
     $('#confirm-yes').textContent = yes;
     const onClick = (ev) => {
       const btn = ev.target.closest('[data-answer]');
-      if (!btn) return;
-      dlg.close(btn.dataset.answer);
+      if (btn) dlg.close(btn.dataset.answer);
     };
     dlg.addEventListener('click', onClick);
     dlg.addEventListener(
@@ -703,135 +457,41 @@ function confirmBox(title, text, yes = 'OK') {
 }
 
 // ---------------------------------------------------------------------------
-// Shooting & hints
+// Result
 
-$('#btn-submit').addEventListener('click', async () => {
-  if (!playing()) return;
-  const { guess, complete, dupCats } = currentGuess();
-  if (!complete || dupCats.size) return;
-  const used = strokesUsed(game);
-  const ok = await confirmBox(
-    used === MAX_STROKES - 1 ? 'Final shot?' : `Take shot ${used + 1}?`,
-    `This uses stroke ${used + 1} of ${MAX_STROKES}. You'll see how many links are right in each category.`,
-    'Shoot',
-  );
-  if (!ok) return;
-  startClock();
-  const res = evaluateGuess(puzzle, guess);
-  game.log.push({ type: 'guess', perCat: res.perCat, correct: res.correct, guess });
-  if (res.won) finish('won');
-  else if (strokesUsed(game) >= MAX_STROKES) finish('lost');
-  else {
-    const left = MAX_STROKES - strokesUsed(game);
-    toast(`${res.correct} of ${res.total} links correct · ${left} stroke${left === 1 ? '' : 's'} left`, 3200);
-    shake($('.answer-panel'));
-  }
-  save();
-  renderAll();
-});
-
-$('#btn-hint').addEventListener('click', async () => {
-  if (!playing() || strokesUsed(game) >= MAX_STROKES - 1) return;
-  const ok = await confirmBox('Take a penalty stroke?', 'One correct link will be revealed on your grid. It costs a stroke.', 'Reveal');
-  if (!ok) return;
-  startClock();
-  const { guess } = currentGuess();
-  const candidates = [];
-  for (let e = 0; e < n; e++) {
-    for (let c = 1; c < k; c++) {
-      const kk = key(0, e, c, solution[e][c]);
-      if (isLocked(kk)) continue;
-      candidates.push({ e, c, wrong: guess[e][c] !== solution[e][c] });
-    }
-  }
-  const pool = candidates.some((x) => x.wrong) ? candidates.filter((x) => x.wrong) : candidates;
-  if (!pool.length) return;
-  const { e, c } = pool[Math.floor(Math.random() * pool.length)];
-  const sx = solution[e][c];
-  // Clear anything contradicting the revealed link, then lock it in.
-  for (let y = 0; y < n; y++) if (y !== sx && markOf(key(0, e, c, y)) === 2) setMark(key(0, e, c, y), 0);
-  for (let z = 0; z < n; z++) if (z !== e && markOf(key(0, z, c, sx)) === 2) setMark(key(0, z, c, sx), 0);
-  const kk = key(0, e, c, sx);
-  game.marks[kk] = 2;
-  game.locked.push(kk);
-  game.log.push({ type: 'hint', e, c });
-  undoStack.length = 0;
-  toast(`Revealed: ${cats[0].items[e].label} ↔ ${cats[c].items[sx].label}`, 3200);
-  save();
-  renderAll();
-  const td = cellEls.get(kk);
-  td?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-});
-
-function finish(status) {
-  game.status = status;
-  game.finishedAt = Date.now();
-  if (mode === 'daily' && todayId() === dayId) {
-    const results = store.get('results', {});
-    results[dayId] = { won: status === 'won', strokes: finalStrokes(game) };
-    store.set('results', results);
-  }
-  save();
-  if (status === 'won') setTimeout(confetti, 150);
-  setTimeout(() => openResult(), status === 'won' ? 700 : 400);
-}
-
-// ---------------------------------------------------------------------------
-// Timer
-
-let lastTick = Date.now();
-function renderTimer() {
-  const t = $('#timer');
-  t.hidden = !settings.timer;
-  t.textContent = `⏱ ${formatDuration(game.elapsed)}`;
-}
-setInterval(() => {
-  const now = Date.now();
-  if (playing() && game.started && document.visibilityState === 'visible') {
-    game.elapsed += Math.min(now - lastTick, 2000);
-    renderTimer();
-    if (Math.random() < 0.2) save();
-  }
-  lastTick = now;
-}, 1000);
-document.addEventListener('visibilitychange', () => {
-  lastTick = Date.now();
-  if (document.visibilityState === 'hidden') save();
-});
-window.addEventListener('pagehide', save);
-
-// ---------------------------------------------------------------------------
-// Result dialog
-
-function currentStreak() {
-  return computeStats(store.get('results', {}), todayId()).current;
+function verdict(total) {
+  if (total === MAX_STARS) return 'Perfekt runda!';
+  if (total >= 12) return 'Riktigt starkt!';
+  if (total >= 8) return 'Bra jobbat!';
+  return 'Bra kämpat!';
 }
 
 let countdownTimer;
 function openResult() {
-  const won = game.status === 'won';
-  const strokes = finalStrokes(game);
-  const term = termFor(strokes);
-  const rows = game.log.map((e) => squaresFor(e, n)).join('<br>');
-  const body = $('#result-body');
-  body.innerHTML = `
-    <svg class="result-hole" viewBox="0 0 260 90" aria-hidden="true">
-      <ellipse cx="160" cy="78" rx="110" ry="9" fill="var(--accent-soft)"/>
-      <ellipse cx="160" cy="76" rx="13" ry="4" fill="var(--ink)" opacity=".85"/>
-      <path d="M160 76V12" stroke="var(--ink)" stroke-width="2.5"/>
-      <path d="M161 12l30 10-30 10z" fill="var(--flag)" stroke="none"/>
-      <circle class="${won ? 'ball-anim' : 'ball-lost'}" cx="160" cy="70" r="6" fill="#fff" stroke="var(--line-strong)" stroke-width="1.2"/>
-    </svg>
-    <div class="result-term">${term.emoji} ${esc(term.name)}</div>
-    <div class="result-sub">${won ? `${strokes} stroke${strokes === 1 ? '' : 's'} · ${relToPar(strokes)} · ` : `Out of strokes · ${relToPar(strokes)} · `}⏱ ${formatDuration(game.elapsed)}</div>
-    <div class="result-grid">${rows}</div>
+  if (!game.finished) return;
+  const list = game.puzzles.map((x) => x.stars);
+  const total = list.reduce((s, x) => s + x, 0);
+  const rows = round
+    .map((p, i) => {
+      const st = game.puzzles[i];
+      return `<div><span>${i + 1}. Mål ${p.target} · du: ${st.value}${st.hint ? ' 💡' : ''}</span><span class="st">${starString(st.stars)}</span></div>`;
+    })
+    .join('');
+  $('#result-body').innerHTML = `
+    <div class="result-total">${total}<small> / ${MAX_STARS} ★</small></div>
+    <div class="result-title">${verdict(total)}</div>
+    <div class="muted">⏱ ${formatDuration(game.elapsed)}</div>
+    <div class="result-squares" aria-hidden="true">${list.map((s) => resultFor(s).square).join('')}</div>
     <div class="actions">
-      <button class="btn primary" id="btn-share"><svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>Share</button>
-      <button class="btn" data-open="dlg-stats">Stats</button>
+      <button class="btn primary" id="btn-share"><svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>Dela resultat</button>
+      <button class="btn" data-open="dlg-stats">Statistik</button>
     </div>
-    <details class="result-sol"><summary>Solution</summary>${solutionTable()}</details>
-    ${mode === 'daily' ? '<div class="countdown">Next hole in<b id="countdown"></b></div>' : `<div class="countdown"><a class="btn ghost" href="${mode === 'practice' ? practiceHref(PROFILES.indexOf(profile)) : '#today'}">${mode === 'practice' ? 'Play another practice puzzle' : "Play today's hole"}</a></div>`}
-  `;
+    <div class="result-rows">${rows}</div>
+    ${
+      mode === 'daily'
+        ? '<div class="countdown">Nya tal om<b id="countdown"></b></div>'
+        : `<div class="countdown"><a class="btn" href="${mode === 'practice' ? `#traning-${randomId()}` : '#idag'}">${mode === 'practice' ? 'Ny träningsrunda' : 'Till dagens tal'}</a></div>`
+    }`;
   $('#btn-share').addEventListener('click', share);
   clearInterval(countdownTimer);
   const tick = () => {
@@ -839,37 +499,35 @@ function openResult() {
     if (!c) return;
     const ms = msUntilMidnight();
     c.textContent = formatDuration(ms);
-    if (ms < 1000) c.innerHTML = '<a href="#today">Tee off!</a>';
+    if (ms < 1000) c.innerHTML = '<a href="#idag">Nya tal finns!</a>';
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
   openDialog('dlg-result');
 }
 
-function solutionTable() {
-  let html = `<table class="answer"><thead><tr>${cats.map((c, i) => `<th class="c-${i}">${esc(c.name)}</th>`).join('')}</tr></thead><tbody>`;
-  for (let e = 0; e < n; e++) {
-    html += `<tr>${cats.map((c, i) => `<td>${esc(c.items[solution[e][i]].label)}</td>`).join('')}</tr>`;
-  }
-  return `${html}</tbody></table>`;
-}
-
 async function share() {
-  // Skip the link when running inside a sandboxed embed whose URL isn't shareable.
+  // Leave the link out inside sandboxed embeds whose address isn't shareable.
   const url = /claude/i.test(location.hostname) ? '' : location.origin + location.pathname;
-  const text = shareText({ game, puzzle, number, url: mode === 'practice' ? '' : url, streak: mode === 'daily' ? currentStreak() : 0 });
-  const coarse = matchMedia('(pointer: coarse)').matches;
-  if (coarse && navigator.share) {
+  const text = shareText({
+    number,
+    label: formatDay(dayId, { day: 'numeric', month: 'short' }),
+    stars: game.puzzles.map((x) => x.stars),
+    elapsed: game.elapsed,
+    streak: mode === 'daily' ? computeStats(store.get('results', {}), todayId()).current : 0,
+    url: mode === 'practice' ? '' : url,
+  });
+  if (matchMedia('(pointer: coarse)').matches && navigator.share) {
     try {
       await navigator.share({ text });
       return;
     } catch {
-      /* fall through to clipboard */
+      /* fall back to the clipboard */
     }
   }
   try {
     await navigator.clipboard.writeText(text);
-    toast('Result copied to clipboard');
+    toast('Resultatet är kopierat');
   } catch {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -877,81 +535,54 @@ async function share() {
     ta.select();
     document.execCommand('copy');
     ta.remove();
-    toast('Result copied to clipboard');
+    toast('Resultatet är kopierat');
   }
 }
 
 // ---------------------------------------------------------------------------
-// Stats dialog
+// Stats
 
 function renderStats() {
   const results = store.get('results', {});
   const s = computeStats(results, todayId());
   const max = Math.max(1, ...Object.values(s.dist));
-  const todayStrokes = results[todayId()] ? (results[todayId()].won ? results[todayId()].strokes : LOST_STROKES) : null;
-
   let html = `<div class="stat-row">
-      <div><b>${s.played}</b><span>Played</span></div>
-      <div><b>${s.winPct}</b><span>Holed %</span></div>
-      <div><b>${s.current}</b><span>Streak</span></div>
-      <div><b>${s.best}</b><span>Best streak</span></div>
+      <div><b>${s.played}</b><span>Spelade</span></div>
+      <div><b>${s.avg === null ? '–' : s.avg.toFixed(1)}</b><span>Snitt ★</span></div>
+      <div><b>${s.current}</b><span>Dagar i rad</span></div>
+      <div><b>${s.best}</b><span>Bästa svit</span></div>
     </div>
-    <h3>Score distribution</h3><div class="dist">`;
-  for (const t of TERMS) {
-    const v = s.dist[t.strokes];
-    html += `<div class="dist-row"><span>${t.emoji} ${t.short}</span><div class="dist-bar ${todayStrokes === t.strokes ? 'hi' : ''}" style="width:${Math.max(8, (v / max) * 100)}%">${v}</div></div>`;
+    <h3>Alla tal</h3><div class="dist">`;
+  for (const r of RESULTS) {
+    const v = s.dist[r.stars];
+    html += `<div class="dist-row"><span><span class="stars">${starString(r.stars)}</span></span><div class="dist-bar s${r.stars}" style="width:${Math.max(8, (v / max) * 100)}%">${v}</div></div>`;
   }
   html += '</div>';
-  if (s.played) html += `<p class="muted small">Average ${s.avg.toFixed(2)} strokes · ${s.toPar === 0 ? 'even' : s.toPar > 0 ? `+${s.toPar}` : `−${-s.toPar}`} to par overall</p>`;
-
-  // Scorecard: the last nine days, golf-style.
-  const days = [...Array(9).keys()].map((i) => addDays(todayId(), i - 8));
-  let total = 0, playedHoles = 0;
-  html += '<h3>Last nine holes</h3><div class="answer-scroll"><table class="scorecard"><tr><th class="lbl">Day</th>';
-  html += days.map((d) => `<th>${formatDay(d, { weekday: 'narrow' })}</th>`).join('');
-  html += '<th>±</th></tr><tr><td class="lbl">Par</td>' + days.map(() => `<td>${PAR}</td>`).join('') + `<td></td></tr><tr><td class="lbl">You</td>`;
-  for (const d of days) {
-    const r = results[d];
-    if (!r) {
-      html += `<td><span class="sc miss ${d === todayId() ? 'today' : ''}">·</span></td>`;
-      continue;
-    }
-    const st = r.won ? r.strokes : LOST_STROKES;
-    total += st - PAR;
-    playedHoles++;
-    const cls = st === 1 ? 'ace' : st < PAR ? 'under' : st === PAR ? '' : st === PAR + 1 ? 'over' : 'over2';
-    html += `<td><span class="sc ${cls}">${r.won ? st : '✕'}</span></td>`;
+  if (s.played) {
+    html += `<p class="muted small">Bästa runda: ${s.bestRound} av ${MAX_STARS} stjärnor${s.perfect ? ` · ${s.perfect} perfekt${s.perfect === 1 ? '' : 'a'} runda${s.perfect === 1 ? '' : 'r'}` : ''}</p>`;
+  } else {
+    html += '<p class="muted small">Spela klart dagens fem tal så dyker din statistik upp här.</p>';
   }
-  html += `<td><b>${playedHoles ? (total === 0 ? 'E' : total > 0 ? `+${total}` : `−${-total}`) : '–'}</b></td></tr></table></div>`;
   $('#stats-body').innerHTML = html;
 }
 
 // ---------------------------------------------------------------------------
-// Archive & practice
+// Archive
 
 function renderArchive() {
-  const pb = $('#practice-buttons');
-  const order = [1, 2, 3, 4, 5, 6, 0];
-  pb.innerHTML = order
-    .map((i) => `<a class="btn" href="${practiceHref(i)}">${PROFILES[i].name}<small>${PROFILES[i].day} · ${PROFILES[i].k}×${PROFILES[i].n}</small></a>`)
-    .join('');
-
-  const results = store.get('results', {});
-  const list = $('#archive-list');
+  $('#practice-link').href = `#traning-${randomId()}`;
   let html = '';
   for (let d = todayId(), i = 0; d >= EPOCH && i < 120; d = addDays(d, -1), i++) {
     const g = store.get(`game:${d}`, null);
-    const p = profileForWeekday(weekday(d));
-    let st = '<span class="muted">Not played</span>';
-    if (g?.status === 'won') {
-      const s = g.log.length;
-      st = `<span class="c-3">${termFor(s).emoji} ${termFor(s).short}</span>`;
-    } else if (g?.status === 'lost') st = '<span class="muted">🕳️ Lost ball</span>';
-    else if (g?.log?.length || g?.started) st = '<span class="muted">In progress</span>';
-    const href = d === todayId() ? '#today' : `#day-${d}`;
-    html += `<li><a href="${href}"><span class="no">#${puzzleNumber(d)}</span><span>${esc(formatDay(d, { weekday: 'short', day: 'numeric', month: 'short' }))} <span class="muted small">· ${p.name}</span></span><span class="st">${st}</span></a></li>`;
+    let st = '<span class="st none">Inte spelad</span>';
+    if (g?.finished) {
+      const t = g.puzzles.reduce((s, x) => s + x.stars, 0);
+      st = `<span class="st">${t} / ${MAX_STARS} ★</span>`;
+    } else if (g?.started) st = '<span class="st none">Påbörjad</span>';
+    const href = d === todayId() ? '#idag' : `#dag-${d}`;
+    html += `<li><a href="${href}"><span class="no">#${puzzleNumber(d)}</span><span>${esc(formatDay(d))}</span>${st}</a></li>`;
   }
-  list.innerHTML = html;
+  $('#archive-list').innerHTML = html;
 }
 
 // ---------------------------------------------------------------------------
@@ -963,31 +594,25 @@ function applyTheme() {
   for (const b of document.querySelectorAll('#set-theme button')) b.classList.toggle('on', b.dataset.v === settings.theme);
 }
 
-function bindSettings() {
-  $('#set-theme').addEventListener('click', (ev) => {
-    const b = ev.target.closest('button');
-    if (!b) return;
-    settings.theme = b.dataset.v;
-    saveSettings();
-    applyTheme();
-  });
-  const bindSwitch = (id, prop, after) => {
-    const input = $(id);
-    input.checked = !!settings[prop];
-    input.addEventListener('change', () => {
-      settings[prop] = input.checked;
-      saveSettings();
-      after?.();
-    });
-  };
-  bindSwitch('#set-autox', 'autoX', refreshGrid);
-  bindSwitch('#set-confirm', 'confirm');
-  bindSwitch('#set-timer', 'timer', renderTimer);
+$('#set-theme').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  settings.theme = b.dataset.v;
+  saveSettings();
   applyTheme();
+});
+for (const [id, prop, after] of [['#set-confirm', 'confirm'], ['#set-timer', 'timer', renderTimer]]) {
+  const input = $(id);
+  input.checked = !!settings[prop];
+  input.addEventListener('change', () => {
+    settings[prop] = input.checked;
+    saveSettings();
+    after?.();
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Dialog plumbing
+// Dialogs
 
 function openDialog(id) {
   if (id === 'dlg-stats') renderStats();
@@ -1007,7 +632,6 @@ document.addEventListener('click', (ev) => {
   const closer = ev.target.closest('[data-close]');
   if (closer) closer.closest('dialog')?.close();
 });
-// Click on the backdrop closes a dialog.
 for (const dlg of document.querySelectorAll('dialog')) {
   dlg.addEventListener('click', (ev) => {
     if (ev.target !== dlg || dlg.id === 'dlg-confirm') return;
@@ -1017,45 +641,24 @@ for (const dlg of document.querySelectorAll('dialog')) {
 }
 $('#dlg-help').addEventListener('close', () => store.set('seenHelp', true));
 
-$('#btn-undo').addEventListener('click', undo);
-$('#btn-clear').addEventListener('click', async () => {
-  if (!playing() || !Object.keys(game.marks).length) return;
-  const wasConfirm = settings.confirm;
-  settings.confirm = true;
-  const ok = await confirmBox('Clear the grid?', 'All your marks will be removed (revealed links stay).', 'Clear');
-  settings.confirm = wasConfirm;
-  if (!ok) return;
-  snapshot();
-  game.marks = {};
-  for (const kk of game.locked) game.marks[kk] = 2;
-  changed();
-});
-$('#btn-show-result').addEventListener('click', openResult);
-document.addEventListener('keydown', (ev) => {
-  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' && !ev.target.closest('input, select, textarea')) {
-    ev.preventDefault();
-    undo();
-  }
-});
-
 // ---------------------------------------------------------------------------
 // Confetti
 
-function confetti() {
+function burst(count) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const canvas = $('#confetti');
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   canvas.width = innerWidth * dpr;
   canvas.height = innerHeight * dpr;
-  ctx.scale(dpr, dpr);
-  const styles = getComputedStyle(document.documentElement);
-  const colors = ['--accent', '--flag', '--gold', '--c0', '--c2', '--c3'].map((v) => styles.getPropertyValue(v).trim());
-  const parts = Array.from({ length: 140 }, () => ({
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const css = getComputedStyle(document.documentElement);
+  const colors = ['--accent', '--sun', '--good', '--ok'].map((v) => css.getPropertyValue(v).trim());
+  const parts = Array.from({ length: count }, () => ({
     x: innerWidth / 2 + (Math.random() - 0.5) * 120,
-    y: innerHeight * 0.35,
-    vx: (Math.random() - 0.5) * 14,
-    vy: -Math.random() * 14 - 4,
+    y: innerHeight * 0.4,
+    vx: (Math.random() - 0.5) * 13,
+    vy: -Math.random() * 13 - 4,
     r: Math.random() * Math.PI,
     vr: (Math.random() - 0.5) * 0.3,
     w: 6 + Math.random() * 6,
@@ -1067,7 +670,6 @@ function confetti() {
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     for (const p of parts) {
       p.vy += 0.35;
-      p.vx *= 0.99;
       p.x += p.vx;
       p.y += p.vy;
       p.r += p.vr;
@@ -1078,7 +680,7 @@ function confetti() {
       ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
       ctx.restore();
     }
-    if (t - start < 2600) requestAnimationFrame(frame);
+    if (t - start < 2400) requestAnimationFrame(frame);
     else ctx.clearRect(0, 0, innerWidth, innerHeight);
   };
   requestAnimationFrame(frame);
@@ -1087,10 +689,8 @@ function confetti() {
 // ---------------------------------------------------------------------------
 // Boot
 
-renderHeader();
-renderClues();
-buildGrid();
-bindSettings();
-renderAll();
+renderMeta();
+applyTheme();
+render();
 if (!store.get('seenHelp', false)) openDialog('dlg-help');
-else if (!playing() && mode === 'daily') setTimeout(openResult, 300);
+else if (game.finished && mode === 'daily') setTimeout(openResult, 300);

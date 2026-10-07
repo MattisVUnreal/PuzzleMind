@@ -1,7 +1,7 @@
 // Day handling. A "day id" is the player's local calendar date, YYYY-MM-DD,
 // so the puzzle rolls over at local midnight (like Wordle).
 
-export const EPOCH = '2026-10-01'; // Puzzle #1
+export const EPOCH = '2026-10-07'; // Round #1
 
 const pad = (n) => String(n).padStart(2, '0');
 const toUTC = (id) => {
@@ -25,7 +25,7 @@ export const puzzleNumber = (id) => daysBetween(EPOCH, id) + 1;
 export const weekday = (id) => new Date(toUTC(id)).getUTCDay();
 
 export function formatDay(id, opts = { weekday: 'long', day: 'numeric', month: 'long' }) {
-  return new Date(toUTC(id)).toLocaleDateString(undefined, { ...opts, timeZone: 'UTC' });
+  return new Date(toUTC(id)).toLocaleDateString('sv-SE', { ...opts, timeZone: 'UTC' });
 }
 
 export function msUntilMidnight(now = new Date()) {
