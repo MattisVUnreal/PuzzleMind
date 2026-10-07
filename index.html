@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Dagens tal</title>
+    <meta name="description" content="Ett räknepussel om dagen. Kombinera sex tal och nå måltalet. Fem tal, femton stjärnor." />
+    <meta name="theme-color" content="#2346c8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='16' fill='%232346c8'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='700' font-size='34' text-anchor='middle' fill='%23ffd23f'%3E%C3%B7%3C/text%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css" />
+    <script>
+      try {
+        const s = JSON.parse(localStorage.getItem('dt:settings') || '{}');
+        if (s.theme === 'light' || s.theme === 'dark') document.documentElement.dataset.theme = s.theme;
+      } catch {}
+    </script>
+    <script type="module" src="js/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#idag" aria-label="Dagens tal: dagens runda">
+          <span class="brand-mark" aria-hidden="true">÷</span>
+          <span>Dagens tal</span>
+        </a>
+        <nav class="top-actions">
+          <button class="icon-btn" data-open="dlg-help" aria-label="Så spelar du" title="Så spelar du">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" /><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.3-2.7 4" /><circle cx="12" cy="17.6" r=".6" fill="currentColor" /></svg>
+          </button>
+          <button class="icon-btn" data-open="dlg-archive" aria-label="Arkiv och träning" title="Arkiv och träning">
+            <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>
+          </button>
+          <button class="icon-btn" data-open="dlg-stats" aria-label="Statistik" title="Statistik">
+            <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6" /></svg>
+          </button>
+          <button class="icon-btn" data-open="dlg-settings" aria-label="Inställningar" title="Inställningar">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div id="mode-banner" class="mode-banner" hidden></div>
+
+      <div class="round-meta">
+        <span id="round-label"></span>
+        <span class="timer" id="timer" title="Tid för rundan"></span>
+      </div>
+
+      <nav class="progress" id="progress" aria-label="Dagens fem tal"></nav>
+
+      <section class="sheet" aria-live="polite">
+        <div class="sheet-head">
+          <h1 id="puzzle-title"></h1>
+          <p id="puzzle-bands" class="bands"></p>
+        </div>
+
+        <div class="target-box">
+          <span class="target-label">Nå talet</span>
+          <span class="target" id="target"></span>
+        </div>
+        <p class="closest" id="closest"></p>
+
+        <div class="calc" id="calc">
+          <p class="calc-step" id="calc-step" aria-live="polite"></p>
+          <div class="calc-row" id="calc-row" aria-hidden="true"></div>
+        </div>
+
+        <div class="tiles" id="tiles"></div>
+
+        <div class="ops" id="ops" role="group" aria-label="Räknesätt">
+          <button class="op" data-op="+" aria-label="plus">+</button>
+          <button class="op" data-op="−" aria-label="minus">−</button>
+          <button class="op" data-op="×" aria-label="gånger">×</button>
+          <button class="op" data-op="÷" aria-label="delat med">÷</button>
+        </div>
+
+        <div class="controls" id="controls">
+          <button class="btn ghost" id="btn-undo">
+            <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>Ångra
+          </button>
+          <button class="btn ghost" id="btn-reset">
+            <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>Börja om
+          </button>
+          <button class="btn ghost" id="btn-hint">
+            <svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" /></svg>Ledtråd
+          </button>
+        </div>
+        <p class="hint-box" id="hint-box" hidden></p>
+        <button class="btn primary wide" id="btn-submit"></button>
+
+        <div class="done-box" id="done-box" hidden></div>
+
+        <ol class="steps" id="steps" aria-label="Dina uträkningar"></ol>
+      </section>
+    </main>
+
+    <footer class="footer">Varje måltal går att nå exakt. Nya tal varje dag vid midnatt.</footer>
+
+    <dialog id="dlg-help" class="dlg">
+      <form method="dialog" class="dlg-close"><button aria-label="Stäng">✕</button></form>
+      <h2>Så spelar du</h2>
+      <p>Räkna dig fram till <b>måltalet</b> med hjälp av sex tal.</p>
+      <ol class="how">
+        <li>Tryck på ett tal.</li>
+        <li>Tryck på ett räknesätt: + − × ÷</li>
+        <li>Tryck på ett till tal. De två talen blir ett nytt tal.</li>
+      </ol>
+      <p>Fortsätt tills du når måltalet. Du behöver inte använda alla tal. Det blir alltid heltal, och minus och delat tar automatiskt det större talet först.</p>
+      <h3>Fem tal om dagen</h3>
+      <p>Varje dag får du fem tal att lösa. De börjar enkelt och blir svårare. Varje tal ger upp till tre stjärnor:</p>
+      <table class="mini-table">
+        <tr><td>Exakt rätt</td><td>★★★</td></tr>
+        <tr><td>Nära</td><td>★★☆</td></tr>
+        <tr><td>Lite längre bort</td><td>★☆☆</td></tr>
+      </table>
+      <p class="muted small">Hur nära som räknas står vid varje tal. Kommer du inte ända fram kan du lämna in det tal som är närmast.</p>
+      <p>Fastnat? En <b>ledtråd</b> visar första steget i en lösning, men kostar en stjärna.</p>
+      <button class="btn primary wide" data-close>Börja räkna</button>
+    </dialog>
+
+    <dialog id="dlg-stats" class="dlg">
+      <form method="dialog" class="dlg-close"><button aria-label="Stäng">✕</button></form>
+      <h2>Statistik</h2>
+      <div id="stats-body"></div>
+    </dialog>
+
+    <dialog id="dlg-result" class="dlg result">
+      <form method="dialog" class="dlg-close"><button aria-label="Stäng">✕</button></form>
+      <div id="result-body"></div>
+    </dialog>
+
+    <dialog id="dlg-archive" class="dlg">
+      <form method="dialog" class="dlg-close"><button aria-label="Stäng">✕</button></form>
+      <h2>Träning</h2>
+      <p class="muted small">Spela en slumpad runda när du vill. Den räknas inte i statistiken.</p>
+      <a class="btn wide" id="practice-link" href="#">Ny träningsrunda</a>
+      <h2 class="mt">Tidigare dagar</h2>
+      <p class="muted small">Bara rundor som spelas samma dag räknas i statistiken.</p>
+      <ul id="archive-list" class="archive-list"></ul>
+    </dialog>
+
+    <dialog id="dlg-settings" class="dlg">
+      <form method="dialog" class="dlg-close"><button aria-label="Stäng">✕</button></form>
+      <h2>Inställningar</h2>
+      <div class="setting">
+        <div><b>Tema</b></div>
+        <div class="seg" id="set-theme">
+          <button data-v="system">Auto</button><button data-v="light">Ljust</button><button data-v="dark">Mörkt</button>
+        </div>
+      </div>
+      <label class="setting"><div><b>Bekräfta inlämning</b><div class="muted small">Fråga innan ett tal lämnas in</div></div><input type="checkbox" class="switch" id="set-confirm" /></label>
+      <label class="setting"><div><b>Visa tid</b></div><input type="checkbox" class="switch" id="set-timer" /></label>
+    </dialog>
+
+    <dialog id="dlg-confirm" class="dlg small-dlg">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <div class="actions">
+        <button class="btn" data-answer="no">Avbryt</button>
+        <button class="btn primary" data-answer="yes" id="confirm-yes">OK</button>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
+  </body>
+</html>
