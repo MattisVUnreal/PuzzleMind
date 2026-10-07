@@ -417,6 +417,5 @@ h1, h2, h3 { margin: 0; line-height: 1.15; text-wrap: balance; }
   .stat-row b { font-size: 22px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}
+/* Set by the game from the device setting or the player's choice. */
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
