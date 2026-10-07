@@ -55,6 +55,7 @@ function shake(node) {
   node.classList.add('shake');
 }
 
+const LV = [1, 3, 5]; // colour per puzzle: green, blue, pink
 const OP_CLASS = { '+': 'op-plus', '−': 'op-minus', '×': 'op-times', '÷': 'op-divide' };
 const stars = (n) => `<b>${'★'.repeat(n)}</b>${'☆'.repeat(3 - n)}`;
 const randomId = () => Math.random().toString(36).slice(2, 8);
@@ -90,7 +91,9 @@ const blank = () => ({
   started: false,
   finished: false,
 });
-const game = Object.assign(blank(), store.get(gameKey, {}));
+const saved = store.get(gameKey, {});
+// Rounds saved before the switch from five to three puzzles start over.
+const game = Object.assign(blank(), saved.puzzles?.length === round.length ? saved : {});
 const save = () => store.set(gameKey, game);
 
 let sel = null; // selected slot
@@ -147,7 +150,7 @@ function renderProgress() {
   nav.innerHTML = round
     .map((p, i) => {
       const st = game.puzzles[i];
-      const cls = ['prog', `lv-${i + 1}`, i === cur() ? 'current' : '', st.done ? 'done' : ''].join(' ');
+      const cls = ['prog', `lv-${LV[i]}`, i === cur() ? 'current' : '', st.done ? 'done' : ''].join(' ');
       const label = st.done ? `Tal ${i + 1}: ${st.stars} av 3 stjärnor` : `Tal ${i + 1}`;
       return `<button class="${cls}" data-i="${i}" aria-label="${label}" ${i === cur() ? 'aria-current="step"' : ''}>
         <span class="n">${i + 1}</span><span class="st">${st.done ? stars(st.stars) : '☆☆☆'}</span></button>`;
@@ -173,7 +176,7 @@ function renderPuzzle() {
   const { slots, lines, best } = board(i);
 
   const sheet = document.querySelector('.sheet');
-  sheet.className = `sheet lv-${i + 1}`;
+  sheet.className = `sheet lv-${LV[i]}`;
   $('#puzzle-title').textContent = `Tal ${i + 1} av ${PUZZLES}`;
   $('#puzzle-bands').innerHTML = `Exakt ${stars(3)} · ±${p.near} ${stars(2)} · ±${p.ok} ${stars(1)}`;
   const target = $('#target');
@@ -499,7 +502,7 @@ function finishRound() {
   syncResult();
   const total = starsList.reduce((s, x) => s + x, 0);
   setTimeout(() => {
-    if (total >= 12) burst(160);
+    if (total >= MAX_STARS - 2) burst(160);
     openResult();
   }, 900);
 }
@@ -578,8 +581,8 @@ function confirmBox(title, text, yes = 'OK', always = false) {
 
 function verdict(total) {
   if (total === MAX_STARS) return 'Perfekt runda!';
-  if (total >= 12) return 'Riktigt starkt!';
-  if (total >= 8) return 'Bra jobbat!';
+  if (total >= 7) return 'Riktigt starkt!';
+  if (total >= 5) return 'Bra jobbat!';
   return 'Bra kämpat!';
 }
 
@@ -686,17 +689,17 @@ async function loadOnline() {
         <div class="hist" aria-label="Hur många som fick varje antal stjärnor">${sum.hist
           .map((c, i) => `<span class="${i === total ? 'me' : ''}" style="height:${Math.max(4, (c / max) * 100)}%" title="${i} ★: ${c} spelare"></span>`)
           .join('')}</div>
-        <div class="hist-axis"><span>0 ★</span><span>15 ★</span></div>`;
+        <div class="hist-axis"><span>0 ★</span><span>${MAX_STARS} ★</span></div>`;
     }
-    html += '<h3>Snabbast med 15/15</h3>';
+    html += `<h3>Snabbast med ${MAX_STARS}/${MAX_STARS}</h3>`;
     if (top?.length) {
       html += `<ol class="board">${top
-        .map((r) => `<li class="${r.elapsed_ms === Math.round(game.elapsed) && total === 15 ? 'me' : ''}"><span>${esc(r.name)}</span><b>${formatDuration(r.elapsed_ms)}</b></li>`)
+        .map((r) => `<li class="${r.elapsed_ms === Math.round(game.elapsed) && total === MAX_STARS ? 'me' : ''}"><span>${esc(r.name)}</span><b>${formatDuration(r.elapsed_ms)}</b></li>`)
         .join('')}</ol>`;
     } else {
-      html += `<p class="muted small">Ingen har fått alla 15 stjärnor ${mode === 'daily' ? 'än idag. Bli först!' : 'den dagen.'}</p>`;
+      html += `<p class="muted small">Ingen har fått alla ${MAX_STARS} stjärnor ${mode === 'daily' ? 'än idag. Bli först!' : 'den dagen.'}</p>`;
     }
-    if (total === 15 && countsToday() && !game.named) {
+    if (total === MAX_STARS && countsToday() && !game.named) {
       html += `<form class="name-form" id="name-form">
           <label for="name-input">Skriv ditt namn på topplistan</label>
           <div><input id="name-input" maxlength="20" autocomplete="nickname" placeholder="Ditt namn" value="${esc(settings.name || '')}" />
@@ -781,7 +784,7 @@ function renderStats() {
   if (s.played) {
     html += `<p class="muted small">Bästa runda: ${s.bestRound} av ${MAX_STARS} stjärnor${s.perfect ? ` · ${s.perfect} perfekt${s.perfect === 1 ? '' : 'a'} runda${s.perfect === 1 ? '' : 'r'}` : ''}</p>`;
   } else {
-    html += '<p class="muted small">Spela klart dagens fem tal så dyker din statistik upp här.</p>';
+    html += '<p class="muted small">Spela klart dagens tre tal så dyker din statistik upp här.</p>';
   }
   $('#stats-body').innerHTML = html;
 }

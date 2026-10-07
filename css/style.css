@@ -163,7 +163,7 @@ h1, h2, h3 { margin: 0; line-height: 1.15; text-wrap: balance; }
 .timer { font-variant-numeric: tabular-nums; }
 
 /* progress: five puzzles with their stars */
-.progress { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.progress { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .prog {
   border: 1.5px solid var(--line); background: var(--sheet); border-radius: 14px; padding: 8px 4px 6px;
   display: grid; justify-items: center; gap: 2px; cursor: pointer; transition: transform 0.12s, border-color 0.15s;

@@ -1,7 +1,7 @@
 # Dagens tal
 
 **Ett räknepussel om dagen.** Kombinera sex tal med + − × ÷ och försök nå
-måltalet. Varje dag finns fem tal som blir lite svårare för varje steg, och
+måltalet. Varje dag finns tre tal (lätt, medel och svårt), och
 varje tal ger upp till tre stjärnor. Alla spelar samma tal samma dag.
 
 ## Så funkar det
@@ -25,11 +25,9 @@ det är tänkt, så de svårare talen kräver verkligen fler steg:
 
 | Tal | Stora tal (25–100) | Steg som krävs | Måltal |
 | --- | --- | --- | --- |
-| 1 | 0 | 2 | 12–60 |
-| 2 | 1 | 2 | 30–150 |
-| 3 | 1 | 3 | 100–400 |
-| 4 | 2 | 3 | 150–600 |
-| 5 | 2 | 4 | 250–999 |
+| 1 (lätt) | 0 | 2 | 12–60 |
+| 2 (medel) | 1 | 3 | 60–300 |
+| 3 (svårt) | 2 | 3 | 150–600 |
 
 Allt räknas fram i webbläsaren utifrån datumet. Det behövs ingen server och
 inget byggsteg.
@@ -37,7 +35,7 @@ inget byggsteg.
 ## Snitt och topplista (Supabase)
 
 Efter rundan visas hur det gick för alla andra: antal spelare, snittet,
-fördelningen av stjärnor och en topplista över de snabbaste med 15/15.
+fördelningen av stjärnor och en topplista över de snabbaste med 9/9.
 Resultaten sparas i en gratis Supabase-databas. Spelet fungerar som vanligt
 även om den inte går att nå.
 
