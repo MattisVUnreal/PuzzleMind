@@ -16,7 +16,7 @@ test('stars by distance, hint costs one', () => {
 
 test('share text', () => {
   const txt = shareText({ number: 1, label: '7 okt.', stars: [3, 3, 2, 1, 0], elapsed: 125000, streak: 3 });
-  assert.equal(txt, 'Dagens tal #1 · 7 okt.\n🟩🟩🟨🟧⬜\n9/15 ⭐\n⏱️ 2:05  🔥 3 dagar i rad');
+  assert.equal(txt, 'Dagens tal #1 · 7 okt.\n🟩🟩🟨🟧⬛\n9/15 ⭐\n⏱️ 2:05  🔥 3 dagar i rad');
 });
 
 test('stats and streaks', () => {

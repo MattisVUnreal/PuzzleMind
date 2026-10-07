@@ -323,7 +323,12 @@ h1, h2, h3 { margin: 0; line-height: 1.15; text-wrap: balance; }
 .result-total { font: 800 56px/1 var(--font-display); letter-spacing: -0.03em; margin-top: 4px; }
 .result-total small { font-size: 22px; color: var(--muted); }
 .result-title { font: 800 24px var(--font-display); margin: 6px 0 2px; }
-.result-squares { font-size: 30px; letter-spacing: 4px; margin: 10px 0; }
+.result-squares { display: flex; justify-content: center; gap: 8px; margin: 12px 0; }
+.sq { width: 30px; height: 30px; border-radius: 7px; background: var(--line-strong); }
+.sq.s3 { background: var(--good); }
+.sq.s2 { background: var(--near); }
+.sq.s1 { background: var(--ok); }
+.sq.s0 { background: color-mix(in srgb, var(--ink) 70%, var(--sheet)); }
 .result-rows { display: grid; gap: 4px; margin: 10px 0 0; text-align: left; font-size: 14px; }
 .result-rows div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; border-radius: 10px; background: var(--sheet-2); font-variant-numeric: tabular-nums; }
 .result-rows .st { color: var(--star); letter-spacing: 2px; }

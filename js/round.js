@@ -9,7 +9,7 @@ export const RESULTS = [
   { stars: 3, name: 'Exakt!', square: '🟩' },
   { stars: 2, name: 'Nära', square: '🟨' },
   { stars: 1, name: 'Hyfsat', square: '🟧' },
-  { stars: 0, name: 'Långt ifrån', square: '⬜' },
+  { stars: 0, name: 'Långt ifrån', square: '⬛' },
 ];
 
 export const resultFor = (stars) => RESULTS.find((r) => r.stars === stars) ?? RESULTS[RESULTS.length - 1];

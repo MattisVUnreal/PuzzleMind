@@ -526,7 +526,7 @@ function openResult() {
     <div class="result-total">${total}<small> / ${MAX_STARS} ★</small></div>
     <div class="result-title">${verdict(total)}</div>
     <div class="muted">⏱ ${formatDuration(game.elapsed)}</div>
-    <div class="result-squares" aria-hidden="true">${list.map((s) => resultFor(s).square).join('')}</div>
+    <div class="result-squares" aria-hidden="true">${list.map((s) => `<span class="sq s${s}"></span>`).join('')}</div>
     <div class="actions">
       <button class="btn primary" id="btn-share"><svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></svg>Dela resultat</button>
       <button class="btn" data-open="dlg-stats">Statistik</button>
@@ -609,7 +609,7 @@ async function loadOnline() {
       html += `<div class="today-stats">
           <div><b>${sum.players}</b><span>spelare ${mode === 'daily' ? 'idag' : 'den dagen'}</span></div>
           <div><b>${fmtAvg(sum.avg)}</b><span>snitt ★</span></div>
-          <div><b>${beat}%</b><span>du slog</span></div>
+          ${sum.players > 1 ? `<div><b>${beat}%</b><span>du slog</span></div>` : '<div><b>🥇</b><span>du är först</span></div>'}
         </div>
         <div class="hist" aria-label="Hur många som fick varje antal stjärnor">${sum.hist
           .map((c, i) => `<span class="${i === total ? 'me' : ''}" style="height:${Math.max(4, (c / max) * 100)}%" title="${i} ★: ${c} spelare"></span>`)
