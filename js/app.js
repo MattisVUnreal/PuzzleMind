@@ -84,6 +84,7 @@ const save = () => store.set(gameKey, game);
 
 let sel = null; // selected slot
 let op = null; // chosen operator
+let lastEq = null; // the calculation just made, shown in the calc row
 
 // ---------------------------------------------------------------------------
 // Board state, rebuilt by replaying the steps
@@ -199,6 +200,7 @@ function renderPuzzle() {
     b.classList.toggle('on', b.dataset.op === op);
     b.disabled = st.done;
   }
+  renderCalc(slots, st.done);
   $('#ops').hidden = st.done;
   $('#controls').hidden = st.done;
   $('#btn-undo').disabled = !st.steps.length;
@@ -218,6 +220,34 @@ function renderPuzzle() {
   $('#steps').innerHTML = lines.map((l) => `<li>${l}</li>`).join('');
 
   renderDone();
+}
+
+// The calc row spells out what you're building: [8] [+] [?] = ?
+function renderCalc(slots, done) {
+  const calc = $('#calc');
+  calc.hidden = done;
+  const tiles = $('#tiles'), ops = $('#ops');
+  tiles.classList.toggle('await', !done && (sel === null || op !== null));
+  ops.classList.toggle('await', !done && sel !== null && op === null);
+  if (done) return;
+  const box = (v, cls = '') => `<span class="cbox ${cls}">${v}</span>`;
+  const sym = (v) => `<span class="csym">${v}</span>`;
+  let step, row;
+  if (lastEq && sel === null) {
+    step = `<b>Bra!</b> Det nya talet ${lastEq.value} ligger bland dina tal. Tryck på ett tal för att räkna vidare.`;
+    row = box(lastEq.a, 'filled') + box(lastEq.op, 'filled op') + box(lastEq.b, 'filled') + sym('=') + box(lastEq.value, 'result');
+  } else if (sel === null) {
+    step = '<b>Steg 1 av 3:</b> Tryck på ett tal.';
+    row = box('?', 'next') + box('', 'op') + box('') + sym('=') + box('');
+  } else if (op === null) {
+    step = '<b>Steg 2 av 3:</b> Välj <b>+</b> plus, <b>−</b> minus, <b>×</b> gånger eller <b>÷</b> delat.';
+    row = box(slots[sel].v, 'filled') + box('?', 'next op') + box('') + sym('=') + box('');
+  } else {
+    step = '<b>Steg 3 av 3:</b> Tryck på talet du vill räkna med.';
+    row = box(slots[sel].v, 'filled') + box(op, 'filled op') + box('?', 'next') + sym('=') + box('?');
+  }
+  $('#calc-step').innerHTML = step;
+  $('#calc-row').innerHTML = row;
 }
 
 function renderDone() {
@@ -264,6 +294,7 @@ $('#tiles').addEventListener('click', (ev) => {
   const b = ev.target.closest('.tile');
   if (!b || b.disabled || curState().done) return;
   startClock();
+  lastEq = null;
   const k = +b.dataset.k;
   if (sel === null || op === null) {
     sel = sel === k ? null : k;
@@ -289,6 +320,8 @@ function combine(a, b, operator, node) {
     return;
   }
   curState().steps.push({ a, b, op: operator });
+  const [x, y] = operator === '−' || operator === '÷' ? [Math.max(slots[a].v, slots[b].v), Math.min(slots[a].v, slots[b].v)] : [slots[a].v, slots[b].v];
+  lastEq = { a: x, op: operator, b: y, value: r.value };
   sel = null;
   op = null;
   save();
@@ -300,8 +333,9 @@ function combine(a, b, operator, node) {
 $('#ops').addEventListener('click', (ev) => {
   const b = ev.target.closest('.op');
   if (!b) return;
+  lastEq = null;
   if (sel === null) {
-    toast('Välj ett tal först');
+    toast('Tryck först på ett tal, sedan på räknesättet');
     shake($('#tiles'));
     return;
   }
