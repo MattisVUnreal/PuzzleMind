@@ -53,17 +53,15 @@ export function canReach(nums, target, depth) {
   return rec(nums, depth);
 }
 
-// The five daily puzzles climb from a warm-up to a real head-scratcher.
+// The three daily puzzles: easy, medium and hard.
 //  big      how many of the large numbers (25, 50, 75, 100) are dealt
 //  steps    operations the target needs (and can't be done in fewer)
 //  range    target range
 //  near/ok  how close earns two stars / one star
 export const LEVELS = [
   { big: 0, steps: 2, range: [12, 60], near: 2, ok: 5 },
-  { big: 1, steps: 2, range: [30, 150], near: 2, ok: 5 },
-  { big: 1, steps: 3, range: [100, 400], near: 5, ok: 10 },
+  { big: 1, steps: 3, range: [60, 300], near: 5, ok: 10 },
   { big: 2, steps: 3, range: [150, 600], near: 5, ok: 10 },
-  { big: 2, steps: 4, range: [250, 999], near: 5, ok: 10 },
 ];
 
 const BIG = [25, 50, 75, 100];

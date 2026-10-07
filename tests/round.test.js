@@ -15,23 +15,23 @@ test('stars by distance, hint costs one', () => {
 });
 
 test('share text', () => {
-  const txt = shareText({ number: 1, label: '7 okt.', stars: [3, 3, 2, 1, 0], elapsed: 125000, streak: 3 });
-  assert.equal(txt, 'Dagens tal #1 · 7 okt.\n🟩🟩🟨🟧⬛\n9/15 ⭐\n⏱️ 2:05  🔥 3 dagar i rad');
+  const txt = shareText({ number: 1, label: '7 okt.', stars: [3, 2, 0], elapsed: 125000, streak: 3 });
+  assert.equal(txt, 'Dagens tal #1 · 7 okt.\n🟩🟨⬛\n5/9 ⭐\n⏱️ 2:05  🔥 3 dagar i rad');
 });
 
 test('stats and streaks', () => {
   const r = {
-    '2026-10-07': { stars: [3, 3, 3, 3, 3] },
-    '2026-10-08': { stars: [3, 2, 1, 0, 2] },
-    '2026-10-10': { stars: [3, 3, 3, 2, 2] },
+    '2026-10-07': { stars: [3, 3, 3] },
+    '2026-10-08': { stars: [3, 1, 0] },
+    '2026-10-10': { stars: [3, 3, 2] },
   };
   const s = computeStats(r, '2026-10-11');
   assert.equal(s.played, 3);
   assert.equal(s.current, 1);
   assert.equal(s.best, 2);
-  assert.equal(s.bestRound, 15);
+  assert.equal(s.bestRound, 9);
   assert.equal(s.perfect, 1);
-  assert.equal(s.dist[3], 9);
+  assert.equal(s.dist[3], 6);
 });
 
 test('dates', () => {

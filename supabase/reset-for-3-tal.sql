@@ -1,3 +1,10 @@
+-- Dagens tal: switch the database from five to three puzzles a day.
+-- Run once: Supabase → SQL Editor → New query → paste → Run.
+-- This DELETES all saved results (so far only test rounds) and recreates
+-- the table, rules and functions for three puzzles (max 9 stars).
+
+drop table if exists public.results cascade;
+
 -- Dagens tal: results, daily average and leaderboard.
 -- Run once in the Supabase dashboard: SQL Editor → New query → paste → Run.
 -- Safe to run again.

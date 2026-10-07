@@ -2,7 +2,7 @@
 
 import { addDays, daysBetween } from './date.js';
 
-export const PUZZLES = 5;
+export const PUZZLES = 3;
 export const MAX_STARS = PUZZLES * 3;
 
 export const RESULTS = [
