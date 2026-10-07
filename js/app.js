@@ -149,6 +149,7 @@ $('#progress').addEventListener('click', (ev) => {
   if (!b) return;
   game.current = +b.dataset.i;
   sel = null;
+  lastEq = null;
   op = null;
   save();
   render();
@@ -273,6 +274,7 @@ function renderDone() {
   $('#btn-next')?.addEventListener('click', () => {
     game.current = nextOpen;
     sel = null;
+    lastEq = null;
     op = null;
     save();
     render();
@@ -348,6 +350,7 @@ function undo() {
   if (st.done || !st.steps.length) return;
   st.steps.pop();
   sel = null;
+  lastEq = null;
   op = null;
   save();
   renderPuzzle();
@@ -358,6 +361,7 @@ $('#btn-reset').addEventListener('click', () => {
   if (st.done) return;
   st.steps = [];
   sel = null;
+  lastEq = null;
   op = null;
   save();
   renderPuzzle();
@@ -399,6 +403,7 @@ function finishPuzzle(value) {
   st.value = value;
   st.stars = puzzleStars(round[i], value, st.hint);
   sel = null;
+  lastEq = null;
   op = null;
   if (game.puzzles.every((x) => x.done)) finishRound();
   save();
@@ -433,6 +438,7 @@ document.addEventListener('keydown', (ev) => {
     undo();
   } else if (ev.key === 'Escape') {
     sel = null;
+    lastEq = null;
     op = null;
     renderPuzzle();
   }
