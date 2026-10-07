@@ -54,23 +54,28 @@ function shake(node) {
 // Route: today's daily, an archived daily (?day=YYYY-MM-DD) or practice.
 
 const today = todayId();
-const params = new URLSearchParams(location.search);
+// Routes live in the hash so they work on any static host and inside
+// sandboxed embeds: #day-YYYY-MM-DD (archive) or #practice-<level>-<seed>.
+const route = location.hash.slice(1);
 let mode = 'daily';
 let dayId = today;
 let seed = today;
 let profile = profileForWeekday(weekday(today));
 
-if (params.has('practice')) {
+const practiceMatch = route.match(/^practice-(\d)-([a-z0-9]+)$/i);
+const dayMatch = route.match(/^day-(\d{4}-\d{2}-\d{2})$/);
+if (practiceMatch) {
   mode = 'practice';
-  const lvl = Number.parseInt(params.get('level'), 10);
-  profile = PROFILES[Number.isInteger(lvl) && lvl >= 0 && lvl < 7 ? lvl : weekday(today)];
-  seed = `practice:${params.get('practice')}`;
-} else if (isDayId(params.get('day')) && params.get('day') < today && params.get('day') >= EPOCH) {
+  const lvl = Number(practiceMatch[1]);
+  profile = PROFILES[lvl < 7 ? lvl : weekday(today)];
+  seed = `practice:${practiceMatch[2]}`;
+} else if (dayMatch && isDayId(dayMatch[1]) && dayMatch[1] < today && dayMatch[1] >= EPOCH) {
   mode = 'archive';
-  dayId = params.get('day');
+  dayId = dayMatch[1];
   seed = dayId;
   profile = profileForWeekday(weekday(dayId));
 }
+window.addEventListener('hashchange', () => location.reload());
 
 const puzzle = generatePuzzle(seed, profile);
 const gameKey = mode === 'practice' ? `game:${seed}:${profile.day}` : `game:${dayId}`;
@@ -186,13 +191,13 @@ function renderHeader() {
     banner.hidden = false;
     banner.innerHTML =
       mode === 'practice'
-        ? `<span>🏌️ Practice puzzle. It doesn't count toward your stats.</span><span><a href="${practiceHref(PROFILES.indexOf(profile))}">New practice puzzle</a> · <a href="./">Today's hole</a></span>`
-        : `<span>📅 Archive: ${esc(formatDay(dayId))}. Replays don't affect streaks.</span><a href="./">Back to today's hole</a>`;
+        ? `<span>🏌️ Practice puzzle. It doesn't count toward your stats.</span><span><a href="${practiceHref(PROFILES.indexOf(profile))}">New practice puzzle</a> · <a href="#today">Today's hole</a></span>`
+        : `<span>📅 Archive: ${esc(formatDay(dayId))}. Replays don't affect streaks.</span><a href="#today">Back to today's hole</a>`;
   }
 }
 
 function practiceHref(level) {
-  return `?practice=${Math.random().toString(36).slice(2, 8)}&level=${level}`;
+  return `#practice-${level}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -825,7 +830,7 @@ function openResult() {
       <button class="btn" data-open="dlg-stats">Stats</button>
     </div>
     <details class="result-sol"><summary>Solution</summary>${solutionTable()}</details>
-    ${mode === 'daily' ? '<div class="countdown">Next hole in<b id="countdown"></b></div>' : `<div class="countdown"><a class="btn ghost" href="${mode === 'practice' ? practiceHref(PROFILES.indexOf(profile)) : './'}">${mode === 'practice' ? 'Play another practice puzzle' : "Play today's hole"}</a></div>`}
+    ${mode === 'daily' ? '<div class="countdown">Next hole in<b id="countdown"></b></div>' : `<div class="countdown"><a class="btn ghost" href="${mode === 'practice' ? practiceHref(PROFILES.indexOf(profile)) : '#today'}">${mode === 'practice' ? 'Play another practice puzzle' : "Play today's hole"}</a></div>`}
   `;
   $('#btn-share').addEventListener('click', share);
   clearInterval(countdownTimer);
@@ -834,7 +839,7 @@ function openResult() {
     if (!c) return;
     const ms = msUntilMidnight();
     c.textContent = formatDuration(ms);
-    if (ms < 1000) c.innerHTML = '<a href="./">Tee off!</a>';
+    if (ms < 1000) c.innerHTML = '<a href="#today">Tee off!</a>';
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
@@ -850,7 +855,8 @@ function solutionTable() {
 }
 
 async function share() {
-  const url = location.origin + location.pathname;
+  // Skip the link when running inside a sandboxed embed whose URL isn't shareable.
+  const url = /claude/i.test(location.hostname) ? '' : location.origin + location.pathname;
   const text = shareText({ game, puzzle, number, url: mode === 'practice' ? '' : url, streak: mode === 'daily' ? currentStreak() : 0 });
   const coarse = matchMedia('(pointer: coarse)').matches;
   if (coarse && navigator.share) {
@@ -942,7 +948,7 @@ function renderArchive() {
       st = `<span class="c-3">${termFor(s).emoji} ${termFor(s).short}</span>`;
     } else if (g?.status === 'lost') st = '<span class="muted">🕳️ Lost ball</span>';
     else if (g?.log?.length || g?.started) st = '<span class="muted">In progress</span>';
-    const href = d === todayId() ? './' : `?day=${d}`;
+    const href = d === todayId() ? '#today' : `#day-${d}`;
     html += `<li><a href="${href}"><span class="no">#${puzzleNumber(d)}</span><span>${esc(formatDay(d, { weekday: 'short', day: 'numeric', month: 'short' }))} <span class="muted small">· ${p.name}</span></span><span class="st">${st}</span></a></li>`;
   }
   list.innerHTML = html;
